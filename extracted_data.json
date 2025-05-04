@@ -1,0 +1,1040 @@
+{
+    "ports": [
+        {
+            "name": "Aarhus",
+            "code": "",
+            "region": "Europe",
+            "country": null,
+            "latitude": 56.1572,
+            "longitude": 10.2107
+        },
+        {
+            "name": "Algeciras",
+            "code": "",
+            "region": "Europe",
+            "country": null,
+            "latitude": 36.1447,
+            "longitude": -5.4534
+        },
+        {
+            "name": "Antwerp",
+            "code": "",
+            "region": "Europe",
+            "country": null,
+            "latitude": 51.2194,
+            "longitude": 4.4025
+        },
+        {
+            "name": "Apapa",
+            "code": "",
+            "region": "Africa",
+            "country": null,
+            "latitude": 6.45,
+            "longitude": 3.3667
+        },
+        {
+            "name": "Auckland",
+            "code": "",
+            "region": "Oceania",
+            "country": null,
+            "latitude": -36.8485,
+            "longitude": 174.7633
+        },
+        {
+            "name": "Bangkok",
+            "code": "",
+            "region": "Asia",
+            "country": null,
+            "latitude": 13.7563,
+            "longitude": 100.5018
+        },
+        {
+            "name": "Barcelona",
+            "code": "",
+            "region": "Europe",
+            "country": null,
+            "latitude": 41.3851,
+            "longitude": 2.1734
+        },
+        {
+            "name": "Belawan",
+            "code": "",
+            "region": "Asia",
+            "country": null,
+            "latitude": 3.7868,
+            "longitude": 98.6855
+        },
+        {
+            "name": "Bilbao",
+            "code": "",
+            "region": "Europe",
+            "country": null,
+            "latitude": 43.263,
+            "longitude": -2.935
+        },
+        {
+            "name": "Bremen",
+            "code": "",
+            "region": "Europe",
+            "country": null,
+            "latitude": 53.0793,
+            "longitude": 8.8017
+        },
+        {
+            "name": "Bremerhaven",
+            "code": "",
+            "region": "Europe",
+            "country": null,
+            "latitude": 53.5395,
+            "longitude": 8.5809
+        },
+        {
+            "name": "Brisbane",
+            "code": "",
+            "region": "Oceania",
+            "country": null,
+            "latitude": -27.4698,
+            "longitude": 153.0251
+        },
+        {
+            "name": "Buenaventura",
+            "code": "",
+            "region": "South America",
+            "country": null,
+            "latitude": 3.8801,
+            "longitude": -77.0312
+        },
+        {
+            "name": "Buenos Aires",
+            "code": "",
+            "region": "South America",
+            "country": null,
+            "latitude": -34.6037,
+            "longitude": -58.3816
+        },
+        {
+            "name": "Busan",
+            "code": "",
+            "region": "Asia",
+            "country": null,
+            "latitude": 35.1796,
+            "longitude": 129.0756
+        },
+        {
+            "name": "Callao",
+            "code": "",
+            "region": "South America",
+            "country": null,
+            "latitude": -12.0464,
+            "longitude": -77.1343
+        },
+        {
+            "name": "Cape Town",
+            "code": "",
+            "region": "Africa",
+            "country": null,
+            "latitude": -33.9249,
+            "longitude": 18.4241
+        },
+        {
+            "name": "Cebu",
+            "code": "",
+            "region": "Asia",
+            "country": null,
+            "latitude": 10.3157,
+            "longitude": 123.8854
+        },
+        {
+            "name": "Colon",
+            "code": "",
+            "region": "Central America",
+            "country": null,
+            "latitude": 9.3592,
+            "longitude": -79.8986
+        },
+        {
+            "name": "Constanta",
+            "code": "",
+            "region": "Europe",
+            "country": null,
+            "latitude": 44.1598,
+            "longitude": 28.6348
+        },
+        {
+            "name": "Copenhagen",
+            "code": "",
+            "region": "Europe",
+            "country": null,
+            "latitude": 55.6761,
+            "longitude": 12.5683
+        },
+        {
+            "name": "Dalian",
+            "code": "",
+            "region": "Asia",
+            "country": null,
+            "latitude": 38.914,
+            "longitude": 121.6147
+        },
+        {
+            "name": "Davao",
+            "code": "",
+            "region": "Asia",
+            "country": null,
+            "latitude": 7.0707,
+            "longitude": 125.6087
+        },
+        {
+            "name": "Dubai",
+            "code": "",
+            "region": "Middle East",
+            "country": null,
+            "latitude": 25.2048,
+            "longitude": 55.2708
+        },
+        {
+            "name": "Durban",
+            "code": "",
+            "region": "Africa",
+            "country": null,
+            "latitude": -29.8587,
+            "longitude": 31.0218
+        },
+        {
+            "name": "Felixstowe",
+            "code": "",
+            "region": "Europe",
+            "country": null,
+            "latitude": 51.9625,
+            "longitude": 1.3511
+        },
+        {
+            "name": "Fremantle",
+            "code": "",
+            "region": "Oceania",
+            "country": null,
+            "latitude": -32.056,
+            "longitude": 115.7471
+        },
+        {
+            "name": "Gdansk",
+            "code": "",
+            "region": "Europe",
+            "country": null,
+            "latitude": 54.352,
+            "longitude": 18.6466
+        },
+        {
+            "name": "Gdynia",
+            "code": "",
+            "region": "Europe",
+            "country": null,
+            "latitude": 54.5189,
+            "longitude": 18.5305
+        },
+        {
+            "name": "Genoa",
+            "code": "",
+            "region": "Europe",
+            "country": null,
+            "latitude": 44.4056,
+            "longitude": 8.9463
+        },
+        {
+            "name": "Gioia Tauro",
+            "code": "",
+            "region": "Europe",
+            "country": null,
+            "latitude": 38.4259,
+            "longitude": 15.8969
+        },
+        {
+            "name": "Gothenburg",
+            "code": "",
+            "region": "Europe",
+            "country": null,
+            "latitude": 57.7089,
+            "longitude": 11.9746
+        },
+        {
+            "name": "Guangzhou",
+            "code": "",
+            "region": "Asia",
+            "country": null,
+            "latitude": 23.1291,
+            "longitude": 113.2644
+        },
+        {
+            "name": "Gwangyang",
+            "code": "",
+            "region": "Asia",
+            "country": null,
+            "latitude": 34.9067,
+            "longitude": 127.6963
+        },
+        {
+            "name": "Hai Phong",
+            "code": "",
+            "region": "Asia",
+            "country": null,
+            "latitude": 20.8449,
+            "longitude": 106.6881
+        },
+        {
+            "name": "Hamburg",
+            "code": "",
+            "region": "Europe",
+            "country": null,
+            "latitude": 53.5511,
+            "longitude": 9.9937
+        },
+        {
+            "name": "Helsinki",
+            "code": "",
+            "region": "Europe",
+            "country": null,
+            "latitude": 60.1699,
+            "longitude": 24.9384
+        },
+        {
+            "name": "Ho Chi Minh City",
+            "code": "",
+            "region": "Asia",
+            "country": null,
+            "latitude": 10.8231,
+            "longitude": 106.6297
+        },
+        {
+            "name": "Hong Kong",
+            "code": "",
+            "region": "Asia",
+            "country": null,
+            "latitude": 22.3193,
+            "longitude": 114.1694
+        },
+        {
+            "name": "Houston",
+            "code": "",
+            "region": "North America",
+            "country": null,
+            "latitude": 29.7604,
+            "longitude": -95.3698
+        },
+        {
+            "name": "Incheon",
+            "code": "",
+            "region": "Asia",
+            "country": null,
+            "latitude": 37.4563,
+            "longitude": 126.7052
+        },
+        {
+            "name": "Istanbul",
+            "code": "",
+            "region": "Europe",
+            "country": null,
+            "latitude": 41.0082,
+            "longitude": 28.9784
+        },
+        {
+            "name": "Izmir",
+            "code": "",
+            "region": "Europe",
+            "country": null,
+            "latitude": 38.4237,
+            "longitude": 27.1428
+        },
+        {
+            "name": "Jebel Ali",
+            "code": "",
+            "region": "Middle East",
+            "country": null,
+            "latitude": 24.9857,
+            "longitude": 55.0078
+        },
+        {
+            "name": "Jeddah",
+            "code": "",
+            "region": "Middle East",
+            "country": null,
+            "latitude": 21.4858,
+            "longitude": 39.1925
+        },
+        {
+            "name": "Kaliningrad",
+            "code": "",
+            "region": "Europe",
+            "country": null,
+            "latitude": 54.7065,
+            "longitude": 20.5106
+        },
+        {
+            "name": "Kaohsiung",
+            "code": "",
+            "region": "Asia",
+            "country": null,
+            "latitude": 22.6273,
+            "longitude": 120.3014
+        },
+        {
+            "name": "Keelung",
+            "code": "",
+            "region": "Asia",
+            "country": null,
+            "latitude": 25.1276,
+            "longitude": 121.7392
+        },
+        {
+            "name": "Klaipeda",
+            "code": "",
+            "region": "Europe",
+            "country": null,
+            "latitude": 55.7068,
+            "longitude": 21.1389
+        },
+        {
+            "name": "Kobe",
+            "code": "",
+            "region": "Asia",
+            "country": null,
+            "latitude": 34.6901,
+            "longitude": 135.1956
+        },
+        {
+            "name": "Koper",
+            "code": "",
+            "region": "Europe",
+            "country": null,
+            "latitude": 45.5488,
+            "longitude": 13.7291
+        },
+        {
+            "name": "Kotka",
+            "code": "",
+            "region": "Europe",
+            "country": null,
+            "latitude": 60.4665,
+            "longitude": 26.9459
+        },
+        {
+            "name": "Laem Chabang",
+            "code": "",
+            "region": "Asia",
+            "country": null,
+            "latitude": 13.1061,
+            "longitude": 100.9158
+        },
+        {
+            "name": "Le Havre",
+            "code": "",
+            "region": "Europe",
+            "country": null,
+            "latitude": 49.4944,
+            "longitude": 0.1079
+        },
+        {
+            "name": "Lisbon",
+            "code": "",
+            "region": "Europe",
+            "country": null,
+            "latitude": 38.7223,
+            "longitude": -9.1393
+        },
+        {
+            "name": "Liverpool",
+            "code": "",
+            "region": "Europe",
+            "country": null,
+            "latitude": 53.4084,
+            "longitude": -2.9916
+        },
+        {
+            "name": "Livorno",
+            "code": "",
+            "region": "Europe",
+            "country": null,
+            "latitude": 43.5485,
+            "longitude": 10.3106
+        },
+        {
+            "name": "London Gateway",
+            "code": "",
+            "region": "Europe",
+            "country": null,
+            "latitude": 51.5074,
+            "longitude": 0.0566
+        },
+        {
+            "name": "Long Beach",
+            "code": "",
+            "region": "North America",
+            "country": null,
+            "latitude": 33.7701,
+            "longitude": -118.1937
+        },
+        {
+            "name": "Los Angeles",
+            "code": "",
+            "region": "North America",
+            "country": null,
+            "latitude": 33.7701,
+            "longitude": -118.1937
+        },
+        {
+            "name": "Makassar",
+            "code": "",
+            "region": "Asia",
+            "country": null,
+            "latitude": -5.1477,
+            "longitude": 119.4327
+        },
+        {
+            "name": "Manila",
+            "code": "",
+            "region": "Asia",
+            "country": null,
+            "latitude": 14.5995,
+            "longitude": 120.9842
+        },
+        {
+            "name": "Manzanillo",
+            "code": "",
+            "region": "Central America",
+            "country": null,
+            "latitude": 9.3592,
+            "longitude": -79.8986
+        },
+        {
+            "name": "Marseille",
+            "code": "",
+            "region": "Europe",
+            "country": null,
+            "latitude": 43.2965,
+            "longitude": 5.3698
+        },
+        {
+            "name": "Melbourne",
+            "code": "",
+            "region": "Oceania",
+            "country": null,
+            "latitude": -37.8136,
+            "longitude": 144.9631
+        },
+        {
+            "name": "Mersin",
+            "code": "",
+            "region": "Europe",
+            "country": null,
+            "latitude": 36.8,
+            "longitude": 34.6333
+        },
+        {
+            "name": "Mombasa",
+            "code": "",
+            "region": "Africa",
+            "country": null,
+            "latitude": -4.0435,
+            "longitude": 39.6682
+        },
+        {
+            "name": "Montreal",
+            "code": "",
+            "region": "North America",
+            "country": null,
+            "latitude": 45.5017,
+            "longitude": -73.5673
+        },
+        {
+            "name": "Nagoya",
+            "code": "",
+            "region": "Asia",
+            "country": null,
+            "latitude": 35.1815,
+            "longitude": 136.9066
+        },
+        {
+            "name": "Naples",
+            "code": "",
+            "region": "Europe",
+            "country": null,
+            "latitude": 40.8518,
+            "longitude": 14.2681
+        },
+        {
+            "name": "New York",
+            "code": "",
+            "region": "North America",
+            "country": null,
+            "latitude": 40.7128,
+            "longitude": -74.006
+        },
+        {
+            "name": "Ningbo-Zhoushan",
+            "code": "",
+            "region": "Asia",
+            "country": null,
+            "latitude": 29.8683,
+            "longitude": 121.544
+        },
+        {
+            "name": "Norfolk",
+            "code": "",
+            "region": "North America",
+            "country": null,
+            "latitude": 36.8508,
+            "longitude": -76.2859
+        },
+        {
+            "name": "Oakland",
+            "code": "",
+            "region": "North America",
+            "country": null,
+            "latitude": 37.8044,
+            "longitude": -122.2711
+        },
+        {
+            "name": "Osaka",
+            "code": "",
+            "region": "Asia",
+            "country": null,
+            "latitude": 34.6937,
+            "longitude": 135.5023
+        },
+        {
+            "name": "Oslo",
+            "code": "",
+            "region": "Europe",
+            "country": null,
+            "latitude": 59.9139,
+            "longitude": 10.7522
+        },
+        {
+            "name": "Paris",
+            "code": "",
+            "region": "Europe",
+            "country": null,
+            "latitude": 48.8566,
+            "longitude": 2.3522
+        },
+        {
+            "name": "Penang",
+            "code": "",
+            "region": "Asia",
+            "country": null,
+            "latitude": 5.4164,
+            "longitude": 100.3327
+        },
+        {
+            "name": "Piraeus",
+            "code": "",
+            "region": "Europe",
+            "country": null,
+            "latitude": 37.9429,
+            "longitude": 23.6469
+        },
+        {
+            "name": "Port Klang",
+            "code": "",
+            "region": "Asia",
+            "country": null,
+            "latitude": 3.0,
+            "longitude": 101.4
+        },
+        {
+            "name": "Port Said",
+            "code": "",
+            "region": "Middle East",
+            "country": null,
+            "latitude": 31.2653,
+            "longitude": 32.3019
+        },
+        {
+            "name": "Qingdao",
+            "code": "",
+            "region": "Asia",
+            "country": null,
+            "latitude": 36.0671,
+            "longitude": 120.3826
+        },
+        {
+            "name": "Riga",
+            "code": "",
+            "region": "Europe",
+            "country": null,
+            "latitude": 56.9676,
+            "longitude": 24.1052
+        },
+        {
+            "name": "Rijeka",
+            "code": "",
+            "region": "Europe",
+            "country": null,
+            "latitude": 45.3271,
+            "longitude": 14.4422
+        },
+        {
+            "name": "Rio Grande",
+            "code": "",
+            "region": "South America",
+            "country": null,
+            "latitude": -32.0353,
+            "longitude": -52.1086
+        },
+        {
+            "name": "Rotterdam",
+            "code": "",
+            "region": "Europe",
+            "country": null,
+            "latitude": 51.9244,
+            "longitude": 4.4777
+        },
+        {
+            "name": "Salalah",
+            "code": "",
+            "region": "Middle East",
+            "country": null,
+            "latitude": 17.0151,
+            "longitude": 54.0924
+        },
+        {
+            "name": "San Antonio",
+            "code": "",
+            "region": "South America",
+            "country": null,
+            "latitude": -33.5931,
+            "longitude": -71.6086
+        },
+        {
+            "name": "Santos",
+            "code": "",
+            "region": "South America",
+            "country": null,
+            "latitude": -23.9619,
+            "longitude": -46.3242
+        },
+        {
+            "name": "Savannah",
+            "code": "",
+            "region": "North America",
+            "country": null,
+            "latitude": 32.0809,
+            "longitude": -81.0912
+        },
+        {
+            "name": "Seattle",
+            "code": "",
+            "region": "North America",
+            "country": null,
+            "latitude": 47.6062,
+            "longitude": -122.3321
+        },
+        {
+            "name": "Shanghai",
+            "code": "",
+            "region": "Asia",
+            "country": null,
+            "latitude": 31.2304,
+            "longitude": 121.4737
+        },
+        {
+            "name": "Shenzhen",
+            "code": "",
+            "region": "Asia",
+            "country": null,
+            "latitude": 22.5431,
+            "longitude": 114.0579
+        },
+        {
+            "name": "Sines",
+            "code": "",
+            "region": "Europe",
+            "country": null,
+            "latitude": 37.9563,
+            "longitude": -8.861
+        },
+        {
+            "name": "Singapore",
+            "code": "",
+            "region": "Asia",
+            "country": null,
+            "latitude": 1.3521,
+            "longitude": 103.8198
+        },
+        {
+            "name": "Southampton",
+            "code": "",
+            "region": "Europe",
+            "country": null,
+            "latitude": 50.9097,
+            "longitude": -1.4044
+        },
+        {
+            "name": "Split",
+            "code": "",
+            "region": "Europe",
+            "country": null,
+            "latitude": 43.5081,
+            "longitude": 16.4402
+        },
+        {
+            "name": "Stockholm",
+            "code": "",
+            "region": "Europe",
+            "country": null,
+            "latitude": 59.3293,
+            "longitude": 18.0686
+        },
+        {
+            "name": "St. Petersburg",
+            "code": "",
+            "region": "Europe",
+            "country": null,
+            "latitude": 59.9343,
+            "longitude": 30.3351
+        },
+        {
+            "name": "Sydney",
+            "code": "",
+            "region": "Oceania",
+            "country": null,
+            "latitude": -33.8688,
+            "longitude": 151.2093
+        },
+        {
+            "name": "Taipei",
+            "code": "",
+            "region": "Asia",
+            "country": null,
+            "latitude": 25.033,
+            "longitude": 121.5654
+        },
+        {
+            "name": "Tallinn",
+            "code": "",
+            "region": "Europe",
+            "country": null,
+            "latitude": 59.4427,
+            "longitude": 24.7536
+        },
+        {
+            "name": "Tangier Med",
+            "code": "",
+            "region": "Africa",
+            "country": null,
+            "latitude": 35.8969,
+            "longitude": -5.5051
+        },
+        {
+            "name": "Tanjung Pelepas",
+            "code": "",
+            "region": "Asia",
+            "country": null,
+            "latitude": 1.3667,
+            "longitude": 103.55
+        },
+        {
+            "name": "Tanjung Priok",
+            "code": "",
+            "region": "Asia",
+            "country": null,
+            "latitude": -6.1286,
+            "longitude": 106.888
+        },
+        {
+            "name": "Thessaloniki",
+            "code": "",
+            "region": "Europe",
+            "country": null,
+            "latitude": 40.6401,
+            "longitude": 22.9444
+        },
+        {
+            "name": "Tianjin",
+            "code": "",
+            "region": "Asia",
+            "country": null,
+            "latitude": 39.0842,
+            "longitude": 117.2009
+        },
+        {
+            "name": "Tokyo",
+            "code": "",
+            "region": "Asia",
+            "country": null,
+            "latitude": 35.6762,
+            "longitude": 139.6503
+        },
+        {
+            "name": "Trieste",
+            "code": "",
+            "region": "Europe",
+            "country": null,
+            "latitude": 45.6495,
+            "longitude": 13.7768
+        },
+        {
+            "name": "Turku",
+            "code": "",
+            "region": "Europe",
+            "country": null,
+            "latitude": 60.4518,
+            "longitude": 22.2666
+        },
+        {
+            "name": "Valencia",
+            "code": "",
+            "region": "Europe",
+            "country": null,
+            "latitude": 39.4699,
+            "longitude": -0.3773
+        },
+        {
+            "name": "Valparaiso",
+            "code": "",
+            "region": "South America",
+            "country": null,
+            "latitude": -33.0472,
+            "longitude": -71.6127
+        },
+        {
+            "name": "Vancouver",
+            "code": "",
+            "region": "North America",
+            "country": null,
+            "latitude": 49.2827,
+            "longitude": -123.1207
+        },
+        {
+            "name": "Varna",
+            "code": "",
+            "region": "Europe",
+            "country": null,
+            "latitude": 43.2141,
+            "longitude": 27.9147
+        },
+        {
+            "name": "Venice",
+            "code": "",
+            "region": "Europe",
+            "country": null,
+            "latitude": 45.4408,
+            "longitude": 12.3155
+        },
+        {
+            "name": "Ventspils",
+            "code": "",
+            "region": "Europe",
+            "country": null,
+            "latitude": 57.3894,
+            "longitude": 21.5606
+        },
+        {
+            "name": "Vung Tau",
+            "code": "",
+            "region": "Asia",
+            "country": null,
+            "latitude": 10.346,
+            "longitude": 107.0843
+        },
+        {
+            "name": "Xiamen",
+            "code": "",
+            "region": "Asia",
+            "country": null,
+            "latitude": 24.4798,
+            "longitude": 118.0819
+        },
+        {
+            "name": "Yokohama",
+            "code": "",
+            "region": "Asia",
+            "country": null,
+            "latitude": 35.4437,
+            "longitude": 139.638
+        },
+        {
+            "name": "Zeebrugge",
+            "code": "",
+            "region": "Europe",
+            "country": null,
+            "latitude": 51.3289,
+            "longitude": 3.2081
+        }
+    ],
+    "container_types": [
+        {
+            "name": "20DV",
+            "description": "20' Dry Van"
+        },
+        {
+            "name": "40DV",
+            "description": "40' Dry Van"
+        },
+        {
+            "name": "40HC",
+            "description": "40' High Cube"
+        }
+    ],
+    "indices": [
+        {
+            "index_name": "SCFI",
+            "baseline_value": 1000,
+            "weight_percentage": 20.0,
+            "current_value": 1347.84
+        },
+        {
+            "index_name": "FBX",
+            "baseline_value": 1650,
+            "weight_percentage": 15.0,
+            "current_value": 2042.0
+        },
+        {
+            "index_name": "WCI",
+            "baseline_value": 1350,
+            "weight_percentage": 15.0,
+            "current_value": 2157.0
+        },
+        {
+            "index_name": "Xeneta",
+            "baseline_value": 150,
+            "weight_percentage": 15.0,
+            "current_value": 154.4
+        },
+        {
+            "index_name": "CCFI",
+            "baseline_value": 1100,
+            "weight_percentage": 10.0,
+            "current_value": 1122.4
+        },
+        {
+            "index_name": "CTS",
+            "baseline_value": 100,
+            "weight_percentage": 0.0,
+            "current_value": 84.0
+        },
+        {
+            "index_name": "CFI",
+            "baseline_value": 950,
+            "weight_percentage": 5.0,
+            "current_value": 1347.8
+        },
+        {
+            "index_name": "Harpex",
+            "baseline_value": 1650,
+            "weight_percentage": 5.0,
+            "current_value": 2100.0
+        },
+        {
+            "index_name": "NewConTex",
+            "baseline_value": 1050,
+            "weight_percentage": 5.0,
+            "current_value": 1486.0
+        },
+        {
+            "index_name": "BDI",
+            "baseline_value": 1400,
+            "weight_percentage": 5.0,
+            "current_value": 1403.0
+        }
+    ]
+}
