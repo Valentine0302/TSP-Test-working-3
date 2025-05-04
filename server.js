@@ -1,4 +1,4 @@
-// Интеграционный модуль v4.4: Восстановлен API админки + Исправлена проверка 0 в current_value при загрузке Excel.
+// Интеграционный модуль v4.6: Полная версия + Добавлены недостающие API админки, исправлена история.
 
 import express from 'express';
 import cors from 'cors';
@@ -27,10 +27,10 @@ const upload = multer({ storage: storage });
 // Подключение к базе данных
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: {
-    rejectUnauthorized: false,
-    // sslmode: 'require' // Раскомментируйте, если ваша БД требует SSL
-  }
+  // SSL configuration based on environment (e.g., Render)
+  ssl: process.env.DATABASE_URL && process.env.DATABASE_URL.includes('render.com') 
+       ? { rejectUnauthorized: false } 
+       : false 
 });
 
 // Создание экземпляра Express
@@ -50,7 +50,7 @@ app.get('/admin', (req, res) => {
 // --- Инициализация системы --- 
 async function initializeSystem() {
   try {
-    console.log('Initializing freight calculator system v4.4 (Admin-Managed Data - Restored).');
+    console.log('Initializing freight calculator system v4.6 (Admin-Managed Data - Full API).');
     await initializeDatabaseTables(); 
     console.log('System initialization completed');
   } catch (error) {
@@ -59,7 +59,7 @@ async function initializeSystem() {
   }
 }
 
-// --- Инициализация таблиц БД (Логика миграции из v4.1) --- 
+// --- Инициализация таблиц БД (Логика миграции из v4.1/v4.4 + Robustness) --- 
 async function initializeDatabaseTables() {
   console.log("Initializing database tables...");
   let client;
@@ -92,7 +92,7 @@ async function initializeDatabaseTables() {
     // Таблица базовых ставок
     await client.query(`
       CREATE TABLE IF NOT EXISTS base_rates (
-        id SERIAL PRIMARY KEY, -- Добавлен ID для упрощения CRUD в админке
+        id SERIAL PRIMARY KEY, 
         origin_region VARCHAR(50) NOT NULL,
         destination_region VARCHAR(50) NOT NULL,
         container_type VARCHAR(10) NOT NULL,
@@ -131,30 +131,32 @@ async function initializeDatabaseTables() {
       CREATE TABLE IF NOT EXISTS calculation_history (
         id SERIAL PRIMARY KEY,
         timestamp TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-        origin_port_code VARCHAR(10), -- Используем коды портов
+        origin_port_code VARCHAR(10), 
         destination_port_code VARCHAR(10),
         container_type VARCHAR(10) NOT NULL,
         weight NUMERIC,
-        calculated_rate NUMERIC NOT NULL,
+        calculated_rate NUMERIC, -- Сделаем nullable на всякий случай, хотя должен быть NOT NULL
         user_email VARCHAR(255),
-        origin_port_id INT, -- Связь с таблицей портов
-        destination_port_id INT, -- Связь с таблицей портов
-        index_values_used JSONB -- Значения индексов, использованные в расчете
+        origin_port_id INT, 
+        destination_port_id INT, 
+        index_values_used JSONB 
       );
     `);
+    // Добавляем недостающие колонки, если их нет (делаем идемпотентным)
     await client.query(`ALTER TABLE calculation_history ADD COLUMN IF NOT EXISTS origin_port_id INT;`);
     await client.query(`ALTER TABLE calculation_history ADD COLUMN IF NOT EXISTS destination_port_id INT;`);
     await client.query(`ALTER TABLE calculation_history ADD COLUMN IF NOT EXISTS weight NUMERIC;`);
     await client.query(`ALTER TABLE calculation_history ADD COLUMN IF NOT EXISTS index_values_used JSONB;`);
-    // Удаляем старые колонки, если они есть (для чистоты)
-    await client.query(`ALTER TABLE calculation_history DROP COLUMN IF EXISTS origin_port;`);
-    await client.query(`ALTER TABLE calculation_history DROP COLUMN IF EXISTS destination_port;`);
-    // Добавляем новые колонки для кодов
     await client.query(`ALTER TABLE calculation_history ADD COLUMN IF NOT EXISTS origin_port_code VARCHAR(10);`);
     await client.query(`ALTER TABLE calculation_history ADD COLUMN IF NOT EXISTS destination_port_code VARCHAR(10);`);
+    // ВАЖНО: Добавляем calculated_rate, если его нет (для совместимости со старыми базами)
+    await client.query(`ALTER TABLE calculation_history ADD COLUMN IF NOT EXISTS calculated_rate NUMERIC;`); 
+    // Удаляем старые колонки, если они есть
+    await client.query(`ALTER TABLE calculation_history DROP COLUMN IF EXISTS origin_port;`);
+    await client.query(`ALTER TABLE calculation_history DROP COLUMN IF EXISTS destination_port;`);
 
     // Таблицы для анализа сезонности
-    await initializeSeasonalityTables(client); // Передаем клиент
+    await initializeSeasonalityTables(client); 
 
     await client.query("COMMIT");
     console.log("Database tables initialized/verified successfully.");
@@ -351,7 +353,7 @@ app.post('/api/calculate', async (req, res) => {
   }
 });
 
-// --- АДМИН API (Восстановлено и дополнено) --- 
+// --- АДМИН API (v4.6 - Полная версия) --- 
 
 // -- Порты (CRUD) --
 app.get('/api/admin/ports', async (req, res) => {
@@ -396,7 +398,7 @@ app.post('/api/admin/ports', async (req, res) => {
     } catch (error) {
         console.error('Admin: Error adding port:', error);
         if (error.code === '23505') { // unique_violation
-             return res.status(409).json({ error: 'Port with this code already exists.' });
+             return res.status(409).json({ error: 'Another port with this code already exists.' });
         }
         res.status(500).json({ error: 'Failed to add port', detail: error.message });
     } finally {
@@ -489,7 +491,6 @@ app.delete('/api/admin/container-types/:name', async (req, res) => {
         res.json({ message: 'Container type deleted successfully' });
     } catch (error) {
         console.error('Admin: Error deleting container type:', error);
-        // Добавим обработку ошибки внешнего ключа, если вдруг она возникнет (хотя проверка выше должна предотвратить)
         if (error.code === '23503') { 
              return res.status(400).json({ error: 'Cannot delete container type: it is still referenced elsewhere.' });
         }
@@ -504,7 +505,7 @@ app.get('/api/admin/calculation-history', async (req, res) => {
   let client;
   try {
     client = await pool.connect();
-    // Используем коды портов из таблицы history
+    // Используем коды портов из таблицы history и проверяем наличие calculated_rate
     const result = await client.query(`
         SELECT 
             h.id, 
@@ -518,11 +519,15 @@ app.get('/api/admin/calculation-history', async (req, res) => {
             h.index_values_used 
         FROM calculation_history h
         ORDER BY h.timestamp DESC
-        LIMIT 100 -- Ограничение для производительности
+        LIMIT 100 
     `);
     res.json(result.rows);
   } catch (error) {
     console.error('Admin: Error fetching calculation history:', error);
+    // Явно проверяем ошибку отсутствия колонки
+    if (error.code === '42703' && error.message.includes('calculated_rate')) {
+         return res.status(500).json({ error: 'Database schema error: Column "calculated_rate" does not exist in "calculation_history". Please apply the database migration.' });
+    }
     res.status(500).json({ error: 'Failed to fetch calculation history', detail: error.message });
   } finally {
     if (client) client.release();
@@ -539,6 +544,25 @@ app.get('/api/admin/index-config', async (req, res) => {
     } catch (error) {
         console.error('Admin: Error fetching index config:', error);
         res.status(500).json({ error: 'Failed to fetch index config' });
+    } finally {
+        if (client) client.release();
+    }
+});
+
+// ДОБАВЛЕНО: GET /api/admin/index-config/:index_name (для редактирования)
+app.get('/api/admin/index-config/:index_name', async (req, res) => {
+    const { index_name } = req.params;
+    let client;
+    try {
+        client = await pool.connect();
+        const result = await client.query('SELECT index_name, baseline_value, weight_percentage, current_value FROM index_config WHERE index_name = $1', [index_name]);
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Index config not found' });
+        }
+        res.json(result.rows[0]);
+    } catch (error) {
+        console.error('Admin: Error fetching specific index config:', error);
+        res.status(500).json({ error: 'Failed to fetch index config details' });
     } finally {
         if (client) client.release();
     }
@@ -882,7 +906,8 @@ app.post('/api/admin/base-rates/upload', upload.single('baseRatesFile'), async (
 });
 
 // -- Настройки модели (CRUD) --
-app.get('/api/admin/model-settings', async (req, res) => {
+// ДОБАВЛЕНО: GET /api/admin/calculation-config (синоним для model-settings)
+app.get(['/api/admin/model-settings', '/api/admin/calculation-config'], async (req, res) => {
   let client;
   try {
     client = await pool.connect();
