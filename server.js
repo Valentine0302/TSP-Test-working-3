@@ -1,4 +1,4 @@
-// Интеграционный модуль v3: Расчет вызывает скраперы для Current Value.
+// Интеграционный модуль v4.4: Восстановлен API админки + Исправлена проверка 0 в current_value при загрузке Excel.
 
 import express from 'express';
 import cors from 'cors';
@@ -6,23 +6,12 @@ import { Pool } from 'pg';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import multer from 'multer'; // Для обработки загрузки файлов
+import xlsx from 'xlsx'; // Для чтения Excel
 
-// Импорт МОДИФИЦИРОВАННЫХ модулей скраперов (читают из БД через API)
-// Теперь они ВЫЗЫВАЮТСЯ для получения Current Value в /api/calculate
-// Используем именованные импорты (ESM)
-import { getSCFIDataForCalculation } from './scfi_scraper.js';
-import { getFBXDataForCalculation } from './fbx_scraper.js';
-import { getWCIDataForCalculation } from './wci_scraper.js';
-import { getXenetaDataForCalculation } from './xeneta_scraper.js';
-import { getCCFIDataForCalculation } from './ccfi_scraper.js';
-import { getCfiDataForCalculation } from './cfi_scraper.js';
-import { getHarpexDataForCalculation } from './harpex_scraper.js';
-import { getNewConTexDataForCalculation } from './contex_scraper.js';
-import { getBdiDataForCalculation } from './bdi_scraper.js';
-
-// Импорт модулей анализа и расчета (Используем именованные импорты)
-import { initializeAndUpdateSeasonalityData, initializeSeasonalityTables, fetchSeasonalityFactor } from './seasonality_analyzer.js'; // Обновлено, добавлено initializeSeasonalityTables
-import { calculateFreightRate, saveRequestToHistory } from './freight_calculator_enhanced.js'; // Обновлено
+// Импорт модулей анализа и расчета (Без скраперов для текущих значений)
+import { initializeAndUpdateSeasonalityData, initializeSeasonalityTables, fetchSeasonalityFactor } from './seasonality_analyzer.js';
+import { calculateFreightRate, saveRequestToHistory } from './freight_calculator_enhanced.js';
 
 // Загрузка переменных окружения
 dotenv.config();
@@ -30,6 +19,10 @@ dotenv.config();
 // Определение __dirname для ES модулей
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// Настройка Multer для загрузки файлов в память
+const storage = multer.memoryStorage();
+const upload = multer({ storage: storage });
 
 // Подключение к базе данных
 const pool = new Pool({
@@ -49,7 +42,7 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Redirect /admin to /admin.html for convenience
+// Redirect /admin to /admin.html
 app.get('/admin', (req, res) => {
   res.redirect('/admin.html');
 });
@@ -57,31 +50,24 @@ app.get('/admin', (req, res) => {
 // --- Инициализация системы --- 
 async function initializeSystem() {
   try {
-    console.log('Initializing freight calculator system v3...');
+    console.log('Initializing freight calculator system v4.4 (Admin-Managed Data - Restored).');
     await initializeDatabaseTables(); 
-    // await initializeAndUpdateSeasonalityData(false); // Вызов перенесен внутрь initializeDatabaseTables
     console.log('System initialization completed');
   } catch (error) {
     console.error('Error initializing system:', error);
-    throw error; // Пробрасываем ошибку, чтобы catch ниже сработал
+    throw error;
   }
 }
 
-// --- Инициализация таблиц БД с детальным логированием --- 
+// --- Инициализация таблиц БД (Логика миграции из v4.1) --- 
 async function initializeDatabaseTables() {
   console.log("Initializing database tables...");
   let client;
   try {
-    console.log("Attempting to connect to database...");
     client = await pool.connect();
-    console.log("Database client connected.");
-
-    console.log("Starting database transaction...");
     await client.query("BEGIN");
-    console.log("Transaction started.");
 
     // Таблица портов
-    console.log("Creating/verifying ports table...");
     await client.query(`
       CREATE TABLE IF NOT EXISTS ports (
         id SERIAL PRIMARY KEY,
@@ -93,37 +79,30 @@ async function initializeDatabaseTables() {
         country VARCHAR(100)
       );
     `);
-    console.log("Ports table checked/created.");
-    console.log("Checking/adding country column to ports...");
     await client.query(`ALTER TABLE ports ADD COLUMN IF NOT EXISTS country VARCHAR(100);`);
-    console.log("Country column checked/added.");
 
     // Таблица типов контейнеров
-    console.log("Creating/verifying container_types table...");
     await client.query(`
       CREATE TABLE IF NOT EXISTS container_types (
         id SERIAL PRIMARY KEY,
         name VARCHAR(10) UNIQUE NOT NULL
       );
     `);
-    console.log("Container_types table checked/created.");
 
     // Таблица базовых ставок
-    console.log("Creating/verifying base_rates table...");
     await client.query(`
       CREATE TABLE IF NOT EXISTS base_rates (
-        id SERIAL PRIMARY KEY,
+        id SERIAL PRIMARY KEY, -- Добавлен ID для упрощения CRUD в админке
         origin_region VARCHAR(50) NOT NULL,
         destination_region VARCHAR(50) NOT NULL,
         container_type VARCHAR(10) NOT NULL,
         rate NUMERIC NOT NULL,
-        UNIQUE(origin_region, destination_region, container_type)
+        UNIQUE(origin_region, destination_region, container_type),
+        FOREIGN KEY (container_type) REFERENCES container_types(name) ON DELETE RESTRICT ON UPDATE CASCADE
       );
     `);
-    console.log("Base_rates table checked/created.");
 
     // Таблица конфигурации индексов
-    console.log("Creating/verifying index_config table...");
     await client.query(`
       CREATE TABLE IF NOT EXISTS index_config (
         index_name VARCHAR(50) PRIMARY KEY,
@@ -133,10 +112,8 @@ async function initializeDatabaseTables() {
         last_updated TIMESTAMP
       );
     `);
-    console.log("Index_config table checked/created.");
 
     // Таблица настроек модели
-    console.log("Creating/verifying model_settings table...");
     await client.query(`
       CREATE TABLE IF NOT EXISTS model_settings (
         setting_key VARCHAR(50) PRIMARY KEY,
@@ -144,70 +121,55 @@ async function initializeDatabaseTables() {
         description TEXT
       );
     `);
-    console.log("Model_settings table checked/created.");
-    console.log("Checking/adding description column to model_settings...");
     await client.query(`ALTER TABLE model_settings ADD COLUMN IF NOT EXISTS description TEXT;`);
-    console.log("Description column checked/added.");
-    console.log("Inserting default sensitivityCoeff...");
     await client.query(`INSERT INTO model_settings (setting_key, setting_value, description) VALUES 
       ('sensitivityCoeff', '0.5', 'Coefficient of sensitivity to index changes (0-1)')
       ON CONFLICT (setting_key) DO NOTHING;`);
-    console.log("Default sensitivityCoeff inserted/ignored.");
 
     // Таблица истории расчетов
-    console.log("Creating/verifying calculation_history table...");
     await client.query(`
       CREATE TABLE IF NOT EXISTS calculation_history (
         id SERIAL PRIMARY KEY,
         timestamp TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-        origin_port VARCHAR(10) NOT NULL,
-        destination_port VARCHAR(10) NOT NULL,
+        origin_port_code VARCHAR(10), -- Используем коды портов
+        destination_port_code VARCHAR(10),
         container_type VARCHAR(10) NOT NULL,
         weight NUMERIC,
         calculated_rate NUMERIC NOT NULL,
         user_email VARCHAR(255),
-        index_sources JSONB,
-        origin_port_id INT,
-        destination_port_id INT
+        origin_port_id INT, -- Связь с таблицей портов
+        destination_port_id INT, -- Связь с таблицей портов
+        index_values_used JSONB -- Значения индексов, использованные в расчете
       );
     `);
-    console.log("Calculation_history table checked/created.");
-    console.log("Checking/adding port_id columns to calculation_history...");
     await client.query(`ALTER TABLE calculation_history ADD COLUMN IF NOT EXISTS origin_port_id INT;`);
     await client.query(`ALTER TABLE calculation_history ADD COLUMN IF NOT EXISTS destination_port_id INT;`);
-    console.log("Port_id columns checked/added.");
+    await client.query(`ALTER TABLE calculation_history ADD COLUMN IF NOT EXISTS weight NUMERIC;`);
+    await client.query(`ALTER TABLE calculation_history ADD COLUMN IF NOT EXISTS index_values_used JSONB;`);
+    // Удаляем старые колонки, если они есть (для чистоты)
+    await client.query(`ALTER TABLE calculation_history DROP COLUMN IF EXISTS origin_port;`);
+    await client.query(`ALTER TABLE calculation_history DROP COLUMN IF EXISTS destination_port;`);
+    // Добавляем новые колонки для кодов
+    await client.query(`ALTER TABLE calculation_history ADD COLUMN IF NOT EXISTS origin_port_code VARCHAR(10);`);
+    await client.query(`ALTER TABLE calculation_history ADD COLUMN IF NOT EXISTS destination_port_code VARCHAR(10);`);
 
-    // Таблицы для анализа сезонности (вызов функции из seasonality_analyzer.js)
-    console.log("Calling initializeSeasonalityTables (imported function)...");
-    await initializeSeasonalityTables(); // Используем импортированную функцию
-    console.log("initializeSeasonalityTables finished.");
+    // Таблицы для анализа сезонности
+    await initializeSeasonalityTables(client); // Передаем клиент
 
-    console.log("Committing transaction...");
     await client.query("COMMIT");
-    console.log("Transaction committed.");
     console.log("Database tables initialized/verified successfully.");
 
   } catch (error) {
     console.error("Error during database transaction, attempting rollback...");
-    if (client) { // Убедимся, что client существует перед rollback
-      try {
-        await client.query("ROLLBACK");
-        console.log("Transaction rolled back.");
-      } catch (rollbackError) {
-        console.error("Error rolling back transaction:", rollbackError);
-      }
+    if (client) { 
+      try { await client.query("ROLLBACK"); console.log("Transaction rolled back."); } catch (rollbackError) { console.error("Rollback failed:", rollbackError); }
     }
     console.error("Error initializing database tables:", error);
-    throw error; // Пробрасываем ошибку дальше
+    throw error;
   } finally {
-    if (client) {
-      console.log("Releasing database client...");
-      client.release();
-      console.log("Database client released.");
-    }
+    if (client) { client.release(); console.log("Database client released."); }
   }
 }
-
 
 // --- Вспомогательные функции --- 
 
@@ -216,859 +178,755 @@ function validateEmail(email) {
   return re.test(String(email).toLowerCase());
 }
 
-// Функция для загрузки конфигурации из БД (БЕЗ current_value для индексов)
-async function loadStaticCalculationConfig() {
+// Функция для загрузки конфигурации из БД (ВКЛЮЧАЯ current_value для индексов)
+async function loadCalculationConfigFromDB() {
     let client;
     try {
-        console.log("Loading static config: connecting to DB...");
         client = await pool.connect();
-        console.log("Loading static config: connected.");
         // 1. Загрузка базовых ставок
-        console.log("Loading static config: fetching base rates...");
         const baseRatesResult = await client.query('SELECT origin_region, destination_region, container_type, rate FROM base_rates');
-        console.log(`Loading static config: fetched ${baseRatesResult.rowCount} base rates.`);
         const baseRatesConfig = {};
         baseRatesResult.rows.forEach(row => {
-            if (!baseRatesConfig[row.origin_region]) {
-                baseRatesConfig[row.origin_region] = {};
-            }
-            if (!baseRatesConfig[row.origin_region][row.destination_region]) {
-                baseRatesConfig[row.origin_region][row.destination_region] = {};
-            }
+            if (!baseRatesConfig[row.origin_region]) baseRatesConfig[row.origin_region] = {};
+            if (!baseRatesConfig[row.origin_region][row.destination_region]) baseRatesConfig[row.origin_region][row.destination_region] = {};
             baseRatesConfig[row.origin_region][row.destination_region][row.container_type] = parseFloat(row.rate);
         });
 
-        // 2. Загрузка ТОЛЬКО baseline и weight для индексов
-        console.log("Loading static config: fetching index config (static part)...");
-        const indexConfigResult = await client.query('SELECT index_name, baseline_value, weight_percentage FROM index_config');
-        console.log(`Loading static config: fetched ${indexConfigResult.rowCount} index configs.`);
-        const indexStaticConfig = {};
+        // 2. Загрузка ПОЛНОЙ конфигурации индексов (включая current_value)
+        const indexConfigResult = await client.query('SELECT index_name, baseline_value, weight_percentage, current_value FROM index_config');
+        const indexConfig = {};
         indexConfigResult.rows.forEach(row => {
-            indexStaticConfig[row.index_name] = {
+            indexConfig[row.index_name] = {
                 baseline_value: parseFloat(row.baseline_value),
-                weight_percentage: parseFloat(row.weight_percentage)
+                weight_percentage: parseFloat(row.weight_percentage),
+                current_value: row.current_value !== null ? parseFloat(row.current_value) : null // Берем текущее значение из БД
             };
         });
 
         // 3. Загрузка параметров модели
-        console.log("Loading static config: fetching model settings...");
         const modelParamsResult = await client.query('SELECT setting_key, setting_value FROM model_settings');
-        console.log(`Loading static config: fetched ${modelParamsResult.rowCount} model settings.`);
         const modelParams = {};
         modelParamsResult.rows.forEach(row => {
             const numValue = parseFloat(row.setting_value);
             modelParams[row.setting_key] = isNaN(numValue) ? row.setting_value : numValue;
         });
         const sensitivityCoeff = modelParams.sensitivityCoeff ?? 0.5;
-        console.log("Loading static config: finished.");
-        return { baseRatesConfig, indexStaticConfig, sensitivityCoeff };
+
+        return { baseRatesConfig, indexConfig, sensitivityCoeff };
 
     } catch (error) {
-        console.error("Error loading static calculation config from DB:", error);
-        throw new Error("Failed to load static calculation configuration from database.");
+        console.error("Error loading calculation config from DB:", error);
+        throw new Error("Failed to load calculation configuration from database.");
     } finally {
-        if (client) {
-            console.log("Loading static config: releasing DB client.");
-            client.release();
-        }
-    }
-}
-
-// Функция для получения Current Value от всех скраперов
-async function getCurrentValuesFromScrapers() {
-    console.log("Fetching current values from all scrapers...");
-    const scraperFunctions = {
-        'SCFI': getSCFIDataForCalculation,
-        'FBX': getFBXDataForCalculation,
-        'WCI': getWCIDataForCalculation,
-        'Xeneta': getXenetaDataForCalculation,
-        'CCFI': getCCFIDataForCalculation,
-        'CFI': getCfiDataForCalculation,
-        'Harpex': getHarpexDataForCalculation,
-        'NewConTex': getNewConTexDataForCalculation,
-        'BDI': getBdiDataForCalculation
-    };
-
-    const indexNames = Object.keys(scraperFunctions);
-    const promises = indexNames.map(name => {
-        console.log(`Calling scraper for ${name}...`);
-        return scraperFunctions[name]().catch(err => {
-            console.error(`Error calling scraper for ${name}:`, err);
-            return { current_index: null }; // Return null on error
-        });
-    });
-
-    try {
-        const results = await Promise.all(promises);
-        const currentValues = {};
-        let allScrapersSuccessful = true;
-
-        results.forEach((result, index) => {
-            const name = indexNames[index];
-            if (result && result.current_index !== undefined && result.current_index !== null) {
-                currentValues[name] = parseFloat(result.current_index);
-                console.log(`Scraper for ${name} succeeded: ${currentValues[name]}`);
-            } else {
-                console.error(`Failed to get current value for index: ${name}. Scraper returned:`, result);
-                currentValues[name] = null;
-                allScrapersSuccessful = false;
-            }
-        });
-
-        console.log("Current values fetched:", currentValues);
-        if (!allScrapersSuccessful) {
-             console.warn("Warning: One or more scrapers failed to return a valid current value.");
-        }
-        return currentValues;
-
-    } catch (error) {
-        // This catch might be redundant due to individual catches in Promise.all
-        console.error("Unexpected error fetching current values from scrapers:", error);
-        throw new Error("Failed to fetch current values from one or more scrapers.");
+        if (client) { client.release(); }
     }
 }
 
 // --- ОСНОВНЫЕ API МАРШРУТЫ --- 
 
+// Получение портов для выпадающих списков
 app.get('/api/ports', async (req, res) => {
   let client;
   try {
-    console.log("GET /api/ports: Connecting to DB...");
     client = await pool.connect();
-    console.log("GET /api/ports: Fetching ports...");
-    const result = await client.query('SELECT id, name, code, region FROM ports ORDER BY name');
-    console.log(`GET /api/ports: Fetched ${result.rowCount} ports.`);
+    // Возвращаем name и code, так как фронтенд их использует
+    const result = await client.query('SELECT id, name, code, region FROM ports ORDER BY name'); 
     res.json(result.rows);
   } catch (error) {
     console.error('Error fetching ports:', error);
     res.status(500).json({ error: 'Failed to fetch ports' });
   } finally {
-    if (client) {
-        console.log("GET /api/ports: Releasing DB client.");
-        client.release();
-    }
+    if (client) { client.release(); }
   }
 });
 
+// Получение типов контейнеров для выпадающих списков
 app.get('/api/container-types', async (req, res) => {
   let client;
   try {
-    console.log("GET /api/container-types: Connecting to DB...");
     client = await pool.connect();
-    console.log("GET /api/container-types: Fetching types...");
     const result = await client.query('SELECT id, name FROM container_types ORDER BY name');
-    console.log(`GET /api/container-types: Fetched ${result.rowCount} types.`);
     res.json(result.rows);
   } catch (error) {
     console.error('Error fetching container types:', error);
     res.status(500).json({ error: 'Failed to fetch container types' });
   } finally {
-    if (client) {
-        console.log("GET /api/container-types: Releasing DB client.");
-        client.release();
-    }
+    if (client) { client.release(); }
   }
 });
 
-// Маршрут для расчета фрахтовой ставки (РЕФАКТОРИНГ: использует скраперы)
+// Маршрут для расчета фрахтовой ставки (РЕФАКТОРИНГ: использует данные из БД)
 app.post('/api/calculate', async (req, res) => {
   console.log("POST /api/calculate: Received request.", req.body);
   try {
     const { originPort, destinationPort, containerType, weight, email } = req.body;
     
     if (!originPort || !destinationPort || !containerType) {
-      console.log("POST /api/calculate: Bad request - missing params.");
       return res.status(400).json({ error: 'Missing required parameters: originPort, destinationPort, containerType' });
     }
     if (email && !validateEmail(email)) {
-      console.log("POST /api/calculate: Bad request - invalid email.");
       return res.status(400).json({ error: 'Invalid email format' });
     }
 
-    console.log("POST /api/calculate: Loading static config...");
-    const { baseRatesConfig, indexStaticConfig, sensitivityCoeff } = await loadStaticCalculationConfig();
+    // 1. Загрузка всей конфигурации (ставки, индексы с current_value) из БД
+    console.log("POST /api/calculate: Loading calculation config from DB...");
+    const { baseRatesConfig, indexConfig, sensitivityCoeff } = await loadCalculationConfigFromDB();
 
-    console.log("POST /api/calculate: Getting current values from scrapers...");
-    const currentValues = await getCurrentValuesFromScrapers();
-
-    console.log("POST /api/calculate: Assembling full index config...");
-    const indexConfig = {};
-    let missingCurrentValue = false;
-    for (const indexName in indexStaticConfig) {
-        if (currentValues[indexName] === null || currentValues[indexName] === undefined) {
-            console.error(`FATAL: Missing current value for required index ${indexName}. Calculation cannot proceed.`);
-            missingCurrentValue = true;
-            break; // Выход из цикла, если не хватает значения
+    // 2. Получение данных о портах (для регионов и ID)
+    let client;
+    let originRegion, destinationRegion, originPortId, destinationPortId;
+    try {
+        client = await pool.connect();
+        const originResult = await client.query('SELECT id, region FROM ports WHERE code = $1', [originPort]);
+        const destinationResult = await client.query('SELECT id, region FROM ports WHERE code = $1', [destinationPort]);
+        if (originResult.rows.length === 0 || destinationResult.rows.length === 0) {
+            throw new Error('Origin or destination port not found in database.');
         }
-        indexConfig[indexName] = {
-            ...indexStaticConfig[indexName],
-            current_value: currentValues[indexName]
-        };
+        originPortId = originResult.rows[0].id;
+        originRegion = originResult.rows[0].region;
+        destinationPortId = destinationResult.rows[0].id;
+        destinationRegion = destinationResult.rows[0].region;
+    } finally {
+        if (client) client.release();
     }
 
-    if (missingCurrentValue) {
-        console.log("POST /api/calculate: Error - missing current index value.");
-        return res.status(500).json({ error: 'Failed to retrieve current value for one or more required indices. Calculation aborted.' });
+    if (!originRegion || !destinationRegion) {
+         throw new Error('Could not determine region for origin or destination port.');
     }
-    
-    console.log("POST /api/calculate: Calculating freight rate...");
-    const result = await calculateFreightRate(
-      originPort,
-      destinationPort,
-      containerType,
-      baseRatesConfig, 
-      indexConfig,
-      sensitivityCoeff,
-      weight,          
-      false
+
+    // 3. Получение фактора сезонности
+    console.log("POST /api/calculate: Fetching seasonality factor...");
+    const seasonalityFactor = await fetchSeasonalityFactor(originRegion, destinationRegion, new Date());
+    console.log(`POST /api/calculate: Seasonality factor: ${seasonalityFactor}`);
+
+    // 4. Вызов функции расчета
+    console.log("POST /api/calculate: Calling calculateFreightRate...");
+    const calculationResult = calculateFreightRate(
+        originRegion,
+        destinationRegion,
+        containerType,
+        baseRatesConfig,      // Базовые ставки из БД
+        indexConfig,          // Индексы (baseline, weight, current_value) из БД
+        seasonalityFactor,
+        sensitivityCoeff      // Параметр модели из БД
     );
-    console.log("POST /api/calculate: Calculation finished.", result);
-    
-    if (email && result.finalRate !== -1) {
-      console.log("POST /api/calculate: Saving request to history...");
-      try {
-        await saveRequestToHistory(
-            originPort, 
-            destinationPort, 
-            containerType, 
-            weight, 
-            result.finalRate, 
-            email, 
-            result.calculationDetails?.indexSources
-        );
-        console.log("POST /api/calculate: Request saved to history.");
-      } catch (historyError) {
-          console.error("Error saving calculation request to history:", historyError);
-          // Не прерываем ответ пользователю, но логируем ошибку
-      }
-    }
-    
-    if (result.error) {
-        console.log("POST /api/calculate: Calculation resulted in error.", result.error);
-        res.status(500).json({ error: result.error });
-    } else {
-        console.log("POST /api/calculate: Sending successful response.");
-        res.json(result);
+
+    // Проверка на ошибки расчета (например, отсутствие базовой ставки)
+    if (calculationResult.error) {
+        console.error("POST /api/calculate: Calculation error:", calculationResult.error);
+        return res.status(400).json({ error: calculationResult.error });
     }
 
-  } catch (error) {
-    console.error('Error calculating freight rate:', error);
-    res.status(500).json({ error: error.message || 'Failed to calculate freight rate due to an internal error.' });
-  }
-});
+    console.log("POST /api/calculate: Calculation successful.", calculationResult);
 
-// Отладочный маршрут для пошагового расчета (РЕФАКТОРИНГ: использует скраперы)
-app.post('/api/debug/calculate', async (req, res) => {
-  console.log("POST /api/debug/calculate: Received request.", req.body);
-  try {
-    const { originPort, destinationPort, containerType, weight } = req.body;
-    
-    if (!originPort || !destinationPort || !containerType) {
-      console.log("POST /api/debug/calculate: Bad request - missing params.");
-      return res.status(400).json({ error: 'Missing required parameters' });
-    }
-    
-    console.log(`Debug calculation request: ${originPort} -> ${destinationPort}, ${containerType}, weight: ${weight || 'default'}`);
-
-    console.log("POST /api/debug/calculate: Loading static config...");
-    const { baseRatesConfig, indexStaticConfig, sensitivityCoeff } = await loadStaticCalculationConfig();
-
-    console.log("POST /api/debug/calculate: Getting current values from scrapers...");
-    const currentValues = await getCurrentValuesFromScrapers();
-
-    console.log("POST /api/debug/calculate: Assembling full index config...");
-    const indexConfig = {};
-    let missingCurrentValue = false;
-    for (const indexName in indexStaticConfig) {
-        if (currentValues[indexName] === null || currentValues[indexName] === undefined) {
-            console.error(`FATAL (Debug): Missing current value for required index ${indexName}. Calculation cannot proceed.`);
-            missingCurrentValue = true;
-            break; 
-        }
-        indexConfig[indexName] = {
-            ...indexStaticConfig[indexName],
-            current_value: currentValues[indexName]
-        };
-    }
-
-    if (missingCurrentValue) {
-        console.log("POST /api/debug/calculate: Error - missing current index value.");
-        return res.status(500).json({ error: 'DEBUG: Failed to retrieve current value for one or more required indices. Calculation aborted.' });
-    }
-    
-    console.log("POST /api/debug/calculate: Calculating freight rate (debug mode)...");
-    const result = await calculateFreightRate(
-      originPort,
-      destinationPort,
-      containerType,
-      baseRatesConfig,
-      indexConfig,
-      sensitivityCoeff,
-      weight, 
-      true // включаем режим отладки
+    // 5. Сохранение запроса в историю (с ID портов и кодами)
+    console.log("POST /api/calculate: Saving request to history...");
+    await saveRequestToHistory(
+        originPort, // Код
+        destinationPort, // Код
+        containerType,
+        weight, // Передаем вес
+        calculationResult.finalRate, // Сохраняем итоговую ставку
+        email,
+        calculationResult.indexValuesUsed, // Сохраняем значения индексов
+        originPortId, // ID
+        destinationPortId // ID
     );
-    
-    console.log(`Debug calculation completed with ${result.debugLog?.length || 0} log entries`);
-    
-    if (result.error) {
-        console.log("POST /api/debug/calculate: Calculation resulted in error.", result.error);
-        res.status(500).json({ error: result.error, debugLog: result.debugLog });
-    } else {
-        console.log("POST /api/debug/calculate: Sending successful response.");
-        res.json(result);
-    }
+    console.log("POST /api/calculate: Request saved to history.");
 
-  } catch (error) {
-    console.error('Error in debug calculation:', error);
-    res.status(500).json({ 
-      error: 'Failed to calculate freight rate in debug mode',
-      details: error.message,
-      stack: error.stack
+    // 6. Отправка результата клиенту
+    res.json({
+      rateRange: {
+        min: calculationResult.minRate,
+        avg: calculationResult.finalRate,
+        max: calculationResult.maxRate,
+      },
+      reliability: calculationResult.reliability,
+      sources: calculationResult.sourcesCount,
     });
+
+  } catch (error) {
+    console.error('Error during calculation:', error);
+    res.status(500).json({ error: error.message || 'Internal server error during calculation' });
   }
 });
 
-// --- API ДЛЯ АДМИН-ПАНЕЛИ --- 
+// --- АДМИН API (Восстановлено и дополнено) --- 
 
-// GET /api/admin/ports - Получение списка портов для админки
+// -- Порты (CRUD) --
 app.get('/api/admin/ports', async (req, res) => {
   let client;
   try {
-    console.log("GET /api/admin/ports: Connecting...");
     client = await pool.connect();
-    console.log("GET /api/admin/ports: Fetching...");
-    const result = await client.query('SELECT id, name, code, region, latitude, longitude, country FROM ports ORDER BY name'); // Added country
-    console.log(`GET /api/admin/ports: Fetched ${result.rowCount} ports.`);
+    const result = await client.query('SELECT id, name, code, region, latitude, longitude, country FROM ports ORDER BY name');
     res.json(result.rows);
   } catch (error) {
-    console.error('Error fetching admin ports:', error);
-    res.status(500).json({ error: 'Failed to fetch ports for admin' });
+    console.error('Admin: Error fetching ports:', error);
+    res.status(500).json({ error: 'Failed to fetch ports' });
   } finally {
-    if (client) {
-        console.log("GET /api/admin/ports: Releasing client.");
-        client.release();
-    }
+    if (client) client.release();
   }
 });
-
-// GET /api/admin/ports/:id - Получение деталей одного порта
 app.get('/api/admin/ports/:id', async (req, res) => {
     const { id } = req.params;
     let client;
-    console.log(`GET /api/admin/ports/${id}: Received request.`);
     try {
-        console.log(`GET /api/admin/ports/${id}: Connecting...`);
         client = await pool.connect();
-        console.log(`GET /api/admin/ports/${id}: Fetching...`);
-        const result = await client.query('SELECT id, name, code, region, latitude, longitude, country FROM ports WHERE id = $1', [id]); // Added country
-        if (result.rows.length === 0) {
-            console.log(`GET /api/admin/ports/${id}: Port not found.`);
-            return res.status(404).json({ error: 'Port not found' });
-        }
-        console.log(`GET /api/admin/ports/${id}: Found port.`);
+        const result = await client.query('SELECT * FROM ports WHERE id = $1', [id]);
+        if (result.rows.length === 0) return res.status(404).json({ error: 'Port not found' });
         res.json(result.rows[0]);
     } catch (error) {
-        console.error(`Error fetching port ${id}:`, error);
+        console.error('Admin: Error fetching port details:', error);
         res.status(500).json({ error: 'Failed to fetch port details' });
     } finally {
-        if (client) {
-            console.log(`GET /api/admin/ports/${id}: Releasing client.`);
-            client.release();
-        }
+        if (client) client.release();
     }
 });
-
-// POST /api/admin/ports - Добавление нового порта
 app.post('/api/admin/ports', async (req, res) => {
     const { name, code, region, latitude, longitude, country } = req.body;
-    console.log("POST /api/admin/ports: Received request.", req.body);
-    if (!name || !code || !region || !country) {
-        console.log("POST /api/admin/ports: Bad request - missing fields.");
-        return res.status(400).json({ error: 'Missing required fields: name, code, region, country' });
-    }
+    if (!name || !code) return res.status(400).json({ error: 'Missing required fields: name, code' });
     let client;
     try {
-        console.log("POST /api/admin/ports: Connecting...");
         client = await pool.connect();
-        console.log("POST /api/admin/ports: Inserting...");
         const result = await client.query(
             'INSERT INTO ports (name, code, region, latitude, longitude, country) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
             [name, code, region, latitude, longitude, country]
         );
-        console.log("POST /api/admin/ports: Inserted successfully.", result.rows[0]);
         res.status(201).json(result.rows[0]);
     } catch (error) {
-        console.error('Error adding port:', error);
-        res.status(500).json({ error: 'Failed to add port' });
-    } finally {
-        if (client) {
-            console.log("POST /api/admin/ports: Releasing client.");
-            client.release();
+        console.error('Admin: Error adding port:', error);
+        if (error.code === '23505') { // unique_violation
+             return res.status(409).json({ error: 'Port with this code already exists.' });
         }
+        res.status(500).json({ error: 'Failed to add port', detail: error.message });
+    } finally {
+        if (client) client.release();
     }
 });
-
-// PUT /api/admin/ports/:id - Обновление существующего порта
 app.put('/api/admin/ports/:id', async (req, res) => {
     const { id } = req.params;
     const { name, code, region, latitude, longitude, country } = req.body;
-    console.log(`PUT /api/admin/ports/${id}: Received request.`, req.body);
-    if (!name || !code || !region || !country) {
-        console.log(`PUT /api/admin/ports/${id}: Bad request - missing fields.`);
-        return res.status(400).json({ error: 'Missing required fields: name, code, region, country' });
-    }
+    if (!name || !code) return res.status(400).json({ error: 'Missing required fields: name, code' });
     let client;
     try {
-        console.log(`PUT /api/admin/ports/${id}: Connecting...`);
         client = await pool.connect();
-        console.log(`PUT /api/admin/ports/${id}: Updating...`);
         const result = await client.query(
             'UPDATE ports SET name = $1, code = $2, region = $3, latitude = $4, longitude = $5, country = $6 WHERE id = $7 RETURNING *',
             [name, code, region, latitude, longitude, country, id]
         );
-        if (result.rows.length === 0) {
-            console.log(`PUT /api/admin/ports/${id}: Port not found.`);
-            return res.status(404).json({ error: 'Port not found' });
-        }
-        console.log(`PUT /api/admin/ports/${id}: Updated successfully.`, result.rows[0]);
+        if (result.rows.length === 0) return res.status(404).json({ error: 'Port not found' });
         res.json(result.rows[0]);
     } catch (error) {
-        console.error(`Error updating port ${id}:`, error);
-        res.status(500).json({ error: 'Failed to update port' });
-    } finally {
-        if (client) {
-            console.log(`PUT /api/admin/ports/${id}: Releasing client.`);
-            client.release();
+        console.error('Admin: Error updating port:', error);
+         if (error.code === '23505') { // unique_violation
+             return res.status(409).json({ error: 'Another port with this code already exists.' });
         }
+        res.status(500).json({ error: 'Failed to update port', detail: error.message });
+    } finally {
+        if (client) client.release();
     }
 });
-
-// DELETE /api/admin/ports/:id - Удаление порта
 app.delete('/api/admin/ports/:id', async (req, res) => {
     const { id } = req.params;
     let client;
-    console.log(`DELETE /api/admin/ports/${id}: Received request.`);
     try {
-        console.log(`DELETE /api/admin/ports/${id}: Connecting...`);
         client = await pool.connect();
-        console.log(`DELETE /api/admin/ports/${id}: Deleting...`);
-        const result = await client.query('DELETE FROM ports WHERE id = $1 RETURNING *', [id]);
-        if (result.rows.length === 0) {
-            console.log(`DELETE /api/admin/ports/${id}: Port not found.`);
-            return res.status(404).json({ error: 'Port not found' });
-        }
-        console.log(`DELETE /api/admin/ports/${id}: Deleted successfully.`);
-        res.status(204).send(); // No content
+        const result = await client.query('DELETE FROM ports WHERE id = $1 RETURNING id', [id]);
+        if (result.rows.length === 0) return res.status(404).json({ error: 'Port not found' });
+        res.json({ message: 'Port deleted successfully' });
     } catch (error) {
-        console.error(`Error deleting port ${id}:`, error);
-        res.status(500).json({ error: 'Failed to delete port' });
+        console.error('Admin: Error deleting port:', error);
+        res.status(500).json({ error: 'Failed to delete port', detail: error.message });
     } finally {
-        if (client) {
-            console.log(`DELETE /api/admin/ports/${id}: Releasing client.`);
-            client.release();
-        }
+        if (client) client.release();
     }
 });
 
-// GET /api/admin/container-types - Получение списка типов контейнеров
+// -- Типы контейнеров (CRUD) --
 app.get('/api/admin/container-types', async (req, res) => {
-  let client;
-  try {
-    console.log("GET /api/admin/container-types: Connecting...");
-    client = await pool.connect();
-    console.log("GET /api/admin/container-types: Fetching...");
-    const result = await client.query('SELECT id, name FROM container_types ORDER BY name');
-    console.log(`GET /api/admin/container-types: Fetched ${result.rowCount} types.`);
-    res.json(result.rows);
-  } catch (error) {
-    console.error('Error fetching admin container types:', error);
-    res.status(500).json({ error: 'Failed to fetch container types for admin' });
-  } finally {
-    if (client) {
-        console.log("GET /api/admin/container-types: Releasing client.");
-        client.release();
+    let client;
+    try {
+        client = await pool.connect();
+        const result = await client.query('SELECT id, name FROM container_types ORDER BY name');
+        res.json(result.rows);
+    } catch (error) {
+        console.error('Admin: Error fetching container types:', error);
+        res.status(500).json({ error: 'Failed to fetch container types' });
+    } finally {
+        if (client) client.release();
     }
-  }
 });
-
-// POST /api/admin/container-types - Добавление нового типа контейнера
 app.post('/api/admin/container-types', async (req, res) => {
     const { name } = req.body;
-    console.log("POST /api/admin/container-types: Received request.", req.body);
-    if (!name) {
-        console.log("POST /api/admin/container-types: Bad request - missing name.");
-        return res.status(400).json({ error: 'Missing required field: name' });
-    }
+    if (!name) return res.status(400).json({ error: 'Missing required field: name' });
     let client;
     try {
-        console.log("POST /api/admin/container-types: Connecting...");
         client = await pool.connect();
-        console.log("POST /api/admin/container-types: Inserting...");
         const result = await client.query('INSERT INTO container_types (name) VALUES ($1) RETURNING *', [name]);
-        console.log("POST /api/admin/container-types: Inserted successfully.", result.rows[0]);
         res.status(201).json(result.rows[0]);
     } catch (error) {
-        console.error('Error adding container type:', error);
-        res.status(500).json({ error: 'Failed to add container type' });
-    } finally {
-        if (client) {
-            console.log("POST /api/admin/container-types: Releasing client.");
-            client.release();
+        console.error('Admin: Error adding container type:', error);
+        if (error.code === '23505') { // unique_violation
+             return res.status(409).json({ error: 'Container type with this name already exists.' });
         }
+        res.status(500).json({ error: 'Failed to add container type', detail: error.message });
+    } finally {
+        if (client) client.release();
     }
 });
-
-// PUT /api/admin/container-types/:id - Обновление типа контейнера
-app.put('/api/admin/container-types/:id', async (req, res) => {
-    const { id } = req.params;
-    const { name } = req.body;
-    console.log(`PUT /api/admin/container-types/${id}: Received request.`, req.body);
-    if (!name) {
-        console.log(`PUT /api/admin/container-types/${id}: Bad request - missing name.`);
-        return res.status(400).json({ error: 'Missing required field: name' });
-    }
+app.delete('/api/admin/container-types/:name', async (req, res) => {
+    const { name } = req.params;
     let client;
     try {
-        console.log(`PUT /api/admin/container-types/${id}: Connecting...`);
         client = await pool.connect();
-        console.log(`PUT /api/admin/container-types/${id}: Updating...`);
-        const result = await client.query('UPDATE container_types SET name = $1 WHERE id = $2 RETURNING *', [name, id]);
-        if (result.rows.length === 0) {
-            console.log(`PUT /api/admin/container-types/${id}: Type not found.`);
-            return res.status(404).json({ error: 'Container type not found' });
+        // Проверка, используется ли тип контейнера в базовых ставках
+        const checkUsage = await client.query('SELECT 1 FROM base_rates WHERE container_type = $1 LIMIT 1', [name]);
+        if (checkUsage.rows.length > 0) {
+            return res.status(400).json({ error: 'Cannot delete container type: it is used in base rates.' });
         }
-        console.log(`PUT /api/admin/container-types/${id}: Updated successfully.`, result.rows[0]);
-        res.json(result.rows[0]);
+        const result = await client.query('DELETE FROM container_types WHERE name = $1 RETURNING name', [name]);
+        if (result.rows.length === 0) return res.status(404).json({ error: 'Container type not found' });
+        res.json({ message: 'Container type deleted successfully' });
     } catch (error) {
-        console.error(`Error updating container type ${id}:`, error);
-        res.status(500).json({ error: 'Failed to update container type' });
-    } finally {
-        if (client) {
-            console.log(`PUT /api/admin/container-types/${id}: Releasing client.`);
-            client.release();
+        console.error('Admin: Error deleting container type:', error);
+        // Добавим обработку ошибки внешнего ключа, если вдруг она возникнет (хотя проверка выше должна предотвратить)
+        if (error.code === '23503') { 
+             return res.status(400).json({ error: 'Cannot delete container type: it is still referenced elsewhere.' });
         }
+        res.status(500).json({ error: 'Failed to delete container type', detail: error.message });
+    } finally {
+        if (client) client.release();
     }
 });
 
-// DELETE /api/admin/container-types/:id - Удаление типа контейнера
-app.delete('/api/admin/container-types/:id', async (req, res) => {
-    const { id } = req.params;
-    let client;
-    console.log(`DELETE /api/admin/container-types/${id}: Received request.`);
-    try {
-        console.log(`DELETE /api/admin/container-types/${id}: Connecting...`);
-        client = await pool.connect();
-        console.log(`DELETE /api/admin/container-types/${id}: Deleting...`);
-        const result = await client.query('DELETE FROM container_types WHERE id = $1 RETURNING *', [id]);
-        if (result.rows.length === 0) {
-            console.log(`DELETE /api/admin/container-types/${id}: Type not found.`);
-            return res.status(404).json({ error: 'Container type not found' });
-        }
-        console.log(`DELETE /api/admin/container-types/${id}: Deleted successfully.`);
-        res.status(204).send();
-    } catch (error) {
-        console.error(`Error deleting container type ${id}:`, error);
-        res.status(500).json({ error: 'Failed to delete container type' });
-    } finally {
-        if (client) {
-            console.log(`DELETE /api/admin/container-types/${id}: Releasing client.`);
-            client.release();
-        }
-    }
-});
-
-// GET /api/admin/base-rates - Получение базовых ставок
-app.get('/api/admin/base-rates', async (req, res) => {
+// -- История расчетов --
+app.get('/api/admin/calculation-history', async (req, res) => {
   let client;
   try {
-    console.log("GET /api/admin/base-rates: Connecting...");
     client = await pool.connect();
-    console.log("GET /api/admin/base-rates: Fetching...");
-    const result = await client.query('SELECT id, origin_region, destination_region, container_type, rate FROM base_rates ORDER BY origin_region, destination_region, container_type');
-    console.log(`GET /api/admin/base-rates: Fetched ${result.rowCount} rates.`);
+    // Используем коды портов из таблицы history
+    const result = await client.query(`
+        SELECT 
+            h.id, 
+            h.timestamp, 
+            h.origin_port_code, 
+            h.destination_port_code, 
+            h.container_type, 
+            h.weight, 
+            h.calculated_rate, 
+            h.user_email, 
+            h.index_values_used 
+        FROM calculation_history h
+        ORDER BY h.timestamp DESC
+        LIMIT 100 -- Ограничение для производительности
+    `);
     res.json(result.rows);
   } catch (error) {
-    console.error('Error fetching admin base rates:', error);
-    res.status(500).json({ error: 'Failed to fetch base rates for admin' });
+    console.error('Admin: Error fetching calculation history:', error);
+    res.status(500).json({ error: 'Failed to fetch calculation history', detail: error.message });
   } finally {
-    if (client) {
-        console.log("GET /api/admin/base-rates: Releasing client.");
-        client.release();
-    }
+    if (client) client.release();
   }
 });
 
-// POST /api/admin/base-rates - Добавление/обновление базовой ставки
-app.post('/api/admin/base-rates', async (req, res) => {
-    const { origin_region, destination_region, container_type, rate } = req.body;
-    console.log("POST /api/admin/base-rates: Received request.", req.body);
-    if (!origin_region || !destination_region || !container_type || rate === undefined) {
-        console.log("POST /api/admin/base-rates: Bad request - missing fields.");
-        return res.status(400).json({ error: 'Missing required fields: origin_region, destination_region, container_type, rate' });
-    }
-    const parsedRate = parseFloat(rate);
-    if (isNaN(parsedRate) || parsedRate < 0) {
-        console.log("POST /api/admin/base-rates: Bad request - invalid rate.");
-        return res.status(400).json({ error: 'Invalid rate value. Must be a non-negative number.' });
-    }
-    let client;
-    try {
-        console.log("POST /api/admin/base-rates: Connecting...");
-        client = await pool.connect();
-        console.log("POST /api/admin/base-rates: Upserting...");
-        const result = await client.query(`
-            INSERT INTO base_rates (origin_region, destination_region, container_type, rate)
-            VALUES ($1, $2, $3, $4)
-            ON CONFLICT (origin_region, destination_region, container_type)
-            DO UPDATE SET rate = $4
-            RETURNING *;
-        `, [origin_region, destination_region, container_type, parsedRate]);
-        console.log("POST /api/admin/base-rates: Upserted successfully.", result.rows[0]);
-        res.status(201).json(result.rows[0]);
-    } catch (error) {
-        console.error('Error upserting base rate:', error);
-        res.status(500).json({ error: 'Failed to add or update base rate' });
-    } finally {
-        if (client) {
-            console.log("POST /api/admin/base-rates: Releasing client.");
-            client.release();
-        }
-    }
-});
-
-// DELETE /api/admin/base-rates/:id - Удаление базовой ставки
-app.delete('/api/admin/base-rates/:id', async (req, res) => {
-    const { id } = req.params;
-    let client;
-    console.log(`DELETE /api/admin/base-rates/${id}: Received request.`);
-    try {
-        console.log(`DELETE /api/admin/base-rates/${id}: Connecting...`);
-        client = await pool.connect();
-        console.log(`DELETE /api/admin/base-rates/${id}: Deleting...`);
-        const result = await client.query('DELETE FROM base_rates WHERE id = $1 RETURNING *', [id]);
-        if (result.rows.length === 0) {
-            console.log(`DELETE /api/admin/base-rates/${id}: Rate not found.`);
-            return res.status(404).json({ error: 'Base rate not found' });
-        }
-        console.log(`DELETE /api/admin/base-rates/${id}: Deleted successfully.`);
-        res.status(204).send();
-    } catch (error) {
-        console.error(`Error deleting base rate ${id}:`, error);
-        res.status(500).json({ error: 'Failed to delete base rate' });
-    } finally {
-        if (client) {
-            console.log(`DELETE /api/admin/base-rates/${id}: Releasing client.`);
-            client.release();
-        }
-    }
-});
-
-// GET /api/admin/index-config - Получение конфигурации индексов
+// -- Конфигурация индексов (CRUD + Upload) --
 app.get('/api/admin/index-config', async (req, res) => {
-  let client;
-  try {
-    console.log("GET /api/admin/index-config: Connecting...");
-    client = await pool.connect();
-    console.log("GET /api/admin/index-config: Fetching...");
-    // Запрашиваем ВСЕ поля, включая current_value и last_updated
-    const result = await client.query('SELECT index_name, baseline_value, weight_percentage, current_value, last_updated FROM index_config ORDER BY index_name');
-    console.log(`GET /api/admin/index-config: Fetched ${result.rowCount} configs.`);
-    res.json(result.rows);
-  } catch (error) {
-    console.error('Error fetching admin index config:', error);
-    res.status(500).json({ error: 'Failed to fetch index config for admin' });
-  } finally {
-    if (client) {
-        console.log("GET /api/admin/index-config: Releasing client.");
-        client.release();
+    let client;
+    try {
+        client = await pool.connect();
+        const result = await client.query('SELECT index_name, baseline_value, weight_percentage, current_value, last_updated FROM index_config ORDER BY index_name');
+        res.json(result.rows);
+    } catch (error) {
+        console.error('Admin: Error fetching index config:', error);
+        res.status(500).json({ error: 'Failed to fetch index config' });
+    } finally {
+        if (client) client.release();
     }
-  }
 });
 
-// PUT /api/admin/index-config/:index_name - Обновление конфигурации индекса (включая current_value)
+app.post('/api/admin/index-config', async (req, res) => {
+    const { index_name, baseline_value, weight_percentage, current_value } = req.body;
+    // Проверяем, что все обязательные поля есть и current_value может быть 0
+    if (!index_name || baseline_value == null || weight_percentage == null || current_value == null) {
+        return res.status(400).json({ error: 'Missing required fields for index config' });
+    }
+     if (weight_percentage < 0 || weight_percentage > 100) {
+        return res.status(400).json({ error: 'Weight percentage must be between 0 and 100' });
+    }
+    let client;
+    try {
+        client = await pool.connect();
+        const result = await client.query(
+            'INSERT INTO index_config (index_name, baseline_value, weight_percentage, current_value, last_updated) VALUES ($1, $2, $3, $4, NOW()) RETURNING *',
+            [index_name, baseline_value, weight_percentage, current_value]
+        );
+        res.status(201).json(result.rows[0]);
+    } catch (error) {
+        console.error('Admin: Error adding index config:', error);
+        if (error.code === '23505') { // unique_violation
+             return res.status(409).json({ error: 'Index with this name already exists.' });
+        }
+        res.status(500).json({ error: 'Failed to add index config', detail: error.message });
+    } finally {
+        if (client) client.release();
+    }
+});
+
 app.put('/api/admin/index-config/:index_name', async (req, res) => {
     const { index_name } = req.params;
     const { baseline_value, weight_percentage, current_value } = req.body;
-    console.log(`PUT /api/admin/index-config/${index_name}: Received request.`, req.body);
-
-    // Валидация входных данных
-    if (baseline_value === undefined || weight_percentage === undefined || current_value === undefined) {
-        console.log(`PUT /api/admin/index-config/${index_name}: Bad request - missing fields.`);
-        return res.status(400).json({ error: 'Missing required fields: baseline_value, weight_percentage, current_value' });
+    if (baseline_value == null || weight_percentage == null || current_value == null) {
+        return res.status(400).json({ error: 'Missing required fields for index config update' });
     }
-    const parsedBaseline = parseFloat(baseline_value);
-    const parsedWeight = parseFloat(weight_percentage);
-    const parsedCurrent = parseFloat(current_value);
-    if (isNaN(parsedBaseline) || parsedBaseline <= 0) {
-        console.log(`PUT /api/admin/index-config/${index_name}: Bad request - invalid baseline.`);
-        return res.status(400).json({ error: 'Invalid baseline_value. Must be a positive number.' });
+     if (weight_percentage < 0 || weight_percentage > 100) {
+        return res.status(400).json({ error: 'Weight percentage must be between 0 and 100' });
     }
-    if (isNaN(parsedWeight) || parsedWeight < 0 || parsedWeight > 100) {
-        console.log(`PUT /api/admin/index-config/${index_name}: Bad request - invalid weight.`);
-        return res.status(400).json({ error: 'Invalid weight_percentage. Must be between 0 and 100.' });
-    }
-    if (isNaN(parsedCurrent)) {
-        console.log(`PUT /api/admin/index-config/${index_name}: Bad request - invalid current value.`);
-        return res.status(400).json({ error: 'Invalid current_value. Must be a number.' });
-    }
-
     let client;
     try {
-        console.log(`PUT /api/admin/index-config/${index_name}: Connecting...`);
         client = await pool.connect();
-        console.log(`PUT /api/admin/index-config/${index_name}: Updating...`);
-        const result = await client.query(`
-            UPDATE index_config 
-            SET baseline_value = $1, weight_percentage = $2, current_value = $3, last_updated = CURRENT_TIMESTAMP 
-            WHERE index_name = $4 
-            RETURNING *;
-        `, [parsedBaseline, parsedWeight, parsedCurrent, index_name]);
-        
-        if (result.rows.length === 0) {
-            console.log(`PUT /api/admin/index-config/${index_name}: Index not found.`);
-            return res.status(404).json({ error: 'Index configuration not found' });
-        }
-        console.log(`PUT /api/admin/index-config/${index_name}: Updated successfully.`, result.rows[0]);
+        const result = await client.query(
+            'UPDATE index_config SET baseline_value = $1, weight_percentage = $2, current_value = $3, last_updated = NOW() WHERE index_name = $4 RETURNING *',
+            [baseline_value, weight_percentage, current_value, index_name]
+        );
+        if (result.rows.length === 0) return res.status(404).json({ error: 'Index config not found' });
         res.json(result.rows[0]);
     } catch (error) {
-        console.error(`Error updating index config ${index_name}:`, error);
-        res.status(500).json({ error: 'Failed to update index configuration' });
+        console.error('Admin: Error updating index config:', error);
+        res.status(500).json({ error: 'Failed to update index config', detail: error.message });
     } finally {
-        if (client) {
-            console.log(`PUT /api/admin/index-config/${index_name}: Releasing client.`);
-            client.release();
-        }
+        if (client) client.release();
     }
 });
 
-// GET /api/admin/model-settings - Получение настроек модели
+app.delete('/api/admin/index-config/:index_name', async (req, res) => {
+    const { index_name } = req.params;
+    let client;
+    try {
+        client = await pool.connect();
+        const result = await client.query('DELETE FROM index_config WHERE index_name = $1 RETURNING index_name', [index_name]);
+        if (result.rows.length === 0) return res.status(404).json({ error: 'Index config not found' });
+        res.json({ message: 'Index config deleted successfully' });
+    } catch (error) {
+        console.error('Admin: Error deleting index config:', error);
+        res.status(500).json({ error: 'Failed to delete index config', detail: error.message });
+    } finally {
+        if (client) client.release();
+    }
+});
+
+// POST /api/admin/indices/upload - Загрузка индексов из Excel
+app.post('/api/admin/indices/upload', upload.single('indicesFile'), async (req, res) => {
+    if (!req.file) {
+        return res.status(400).json({ error: 'No file uploaded.' });
+    }
+    let client;
+    try {
+        console.log("Admin: Processing uploaded indices Excel file...");
+        const workbook = xlsx.read(req.file.buffer, { type: 'buffer' });
+        const sheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[sheetName];
+        const data = xlsx.utils.sheet_to_json(worksheet);
+
+        if (data.length === 0) {
+            return res.status(400).json({ error: 'Excel file is empty or has incorrect format.' });
+        }
+
+        client = await pool.connect();
+        await client.query('BEGIN');
+
+        let processedCount = 0;
+        let skippedCount = 0;
+
+        for (const row of data) {
+            const index_name = row.index_name?.toString().trim();
+            const baseline_value = parseFloat(row.baseline_value);
+            const weight_percentage = parseFloat(row.weight_percentage);
+            
+            // ИСПРАВЛЕНО v4.4: Обработка current_value, считая пустые/null/undefined как 0.
+            let current_value = NaN; // Default to NaN
+            const raw_current_value = row.current_value; // Store original value for checks
+
+            // Check if the value exists and is not an empty string before parsing
+            if (raw_current_value !== undefined && raw_current_value !== null && raw_current_value !== '') {
+                // Try parsing non-empty values
+                current_value = parseFloat(raw_current_value);
+                // If parsing results in NaN, but the raw value was '0', treat it as 0
+                if (isNaN(current_value) && raw_current_value.toString().trim() === '0') {
+                     current_value = 0;
+                }
+            } else if (raw_current_value === 0) {
+                 // Explicitly handle numeric 0
+                 current_value = 0;
+            } else if (raw_current_value === undefined || raw_current_value === null || raw_current_value === '') {
+                 // Treat missing/empty cells as 0 based on user feedback
+                 console.warn(`Admin: Treating missing/empty current_value as 0 for index: ${row.index_name}`);
+                 current_value = 0;
+            }
+
+            // Skip if parsing failed AND the original value wasn't explicitly 0 or treated as 0
+            if (isNaN(current_value)) {
+                 console.warn(`Admin: Skipping index row due to invalid non-numeric current_value after processing: ${JSON.stringify(row)}`);
+                 skippedCount++;
+                 continue;
+            }
+
+            // Проверка остальных полей
+            if (!index_name || isNaN(baseline_value) || isNaN(weight_percentage)) {
+                console.warn(`Admin: Skipping index row due to invalid name, baseline, or weight: ${JSON.stringify(row)}`);
+                skippedCount++;
+                continue; // Пропускаем строки с некорректными данными
+            }
+             if (weight_percentage < 0 || weight_percentage > 100) {
+                 console.warn(`Admin: Skipping index row due to invalid weight (${weight_percentage}): ${JSON.stringify(row)}`);
+                 skippedCount++;
+                 continue;
+            }
+
+            // Используем INSERT ... ON CONFLICT (UPSERT)
+            const upsertQuery = `
+                INSERT INTO index_config (index_name, baseline_value, weight_percentage, current_value, last_updated)
+                VALUES ($1, $2, $3, $4, NOW())
+                ON CONFLICT (index_name)
+                DO UPDATE SET
+                    baseline_value = EXCLUDED.baseline_value,
+                    weight_percentage = EXCLUDED.weight_percentage,
+                    current_value = EXCLUDED.current_value,
+                    last_updated = NOW();
+            `;
+            await client.query(upsertQuery, [index_name, baseline_value, weight_percentage, current_value]);
+            processedCount++;
+        }
+        
+        await client.query('COMMIT');
+        console.log(`Admin: Indices Excel file processed. ${processedCount} rows processed, ${skippedCount} rows skipped.`);
+        res.json({ message: `Файл успешно обработан. Обработано строк: ${processedCount}. Пропущено строк: ${skippedCount}.` });
+
+    } catch (error) {
+        console.error('Admin: Error processing indices Excel file:', error);
+        if (client) await client.query('ROLLBACK');
+        res.status(500).json({ error: 'Failed to process Excel file', detail: error.message });
+    } finally {
+        if (client) client.release();
+    }
+});
+
+// -- Базовые ставки (CRUD + Upload) --
+app.get('/api/admin/base-rates', async (req, res) => {
+    let client;
+    try {
+        client = await pool.connect();
+        // Добавляем id в выборку
+        const result = await client.query('SELECT id, origin_region, destination_region, container_type, rate FROM base_rates ORDER BY origin_region, destination_region, container_type');
+        res.json(result.rows);
+    } catch (error) {
+        console.error('Admin: Error fetching base rates:', error);
+        res.status(500).json({ error: 'Failed to fetch base rates' });
+    } finally {
+        if (client) client.release();
+    }
+});
+
+app.post('/api/admin/base-rates', async (req, res) => {
+    const { origin_region, destination_region, container_type, rate } = req.body;
+    if (!origin_region || !destination_region || !container_type || rate == null) {
+        return res.status(400).json({ error: 'Missing required fields for base rate' });
+    }
+    let client;
+    try {
+        client = await pool.connect();
+        const result = await client.query(
+            'INSERT INTO base_rates (origin_region, destination_region, container_type, rate) VALUES ($1, $2, $3, $4) RETURNING *',
+            [origin_region, destination_region, container_type, rate]
+        );
+        res.status(201).json(result.rows[0]);
+    } catch (error) {
+        console.error('Admin: Error adding base rate:', error);
+        // Обработка ошибки дубликата ключа
+        if (error.code === '23505') { // unique_violation
+             return res.status(409).json({ error: 'Base rate for this combination already exists.' });
+        }
+        // Обработка ошибки внешнего ключа (если container_type нет в справочнике)
+        if (error.code === '23503') { // foreign_key_violation
+             return res.status(400).json({ error: `Container type '${container_type}' does not exist. Please add it first.` });
+        }
+        res.status(500).json({ error: 'Failed to add base rate', detail: error.message });
+    } finally {
+        if (client) client.release();
+    }
+});
+
+// Используем ID для PUT и DELETE базовых ставок
+app.put('/api/admin/base-rates/:id', async (req, res) => {
+    const { id } = req.params;
+    const { origin_region, destination_region, container_type, rate } = req.body;
+    if (!origin_region || !destination_region || !container_type || rate == null) {
+        return res.status(400).json({ error: 'Missing required fields for base rate update' });
+    }
+    let client;
+    try {
+        client = await pool.connect();
+        // Проверка внешнего ключа перед обновлением
+        const checkType = await client.query('SELECT 1 FROM container_types WHERE name = $1', [container_type]);
+        if (checkType.rows.length === 0) {
+             return res.status(400).json({ error: `Container type '${container_type}' does not exist. Please add it first.` });
+        }
+
+        const result = await client.query(
+            'UPDATE base_rates SET origin_region = $1, destination_region = $2, container_type = $3, rate = $4 WHERE id = $5 RETURNING *',
+            [origin_region, destination_region, container_type, rate, id]
+        );
+        if (result.rows.length === 0) return res.status(404).json({ error: 'Base rate not found' });
+        res.json(result.rows[0]);
+    } catch (error) {
+        console.error('Admin: Error updating base rate:', error);
+         // Обработка ошибки дубликата ключа (если вдруг изменили на существующую комбинацию)
+        if (error.code === '23505') { 
+             return res.status(409).json({ error: 'Base rate for this combination already exists.' });
+        }
+        res.status(500).json({ error: 'Failed to update base rate', detail: error.message });
+    } finally {
+        if (client) client.release();
+    }
+});
+
+app.delete('/api/admin/base-rates/:id', async (req, res) => {
+    const { id } = req.params;
+    let client;
+    try {
+        client = await pool.connect();
+        const result = await client.query('DELETE FROM base_rates WHERE id = $1 RETURNING id', [id]);
+        if (result.rows.length === 0) return res.status(404).json({ error: 'Base rate not found' });
+        res.json({ message: 'Base rate deleted successfully' });
+    } catch (error) {
+        console.error('Admin: Error deleting base rate:', error);
+        res.status(500).json({ error: 'Failed to delete base rate', detail: error.message });
+    } finally {
+        if (client) client.release();
+    }
+});
+
+// POST /api/admin/base-rates/upload - Загрузка базовых ставок из Excel
+app.post('/api/admin/base-rates/upload', upload.single('baseRatesFile'), async (req, res) => {
+     if (!req.file) {
+        return res.status(400).json({ error: 'No file uploaded.' });
+    }
+    let client;
+    try {
+        console.log("Admin: Processing uploaded base rates Excel file...");
+        const workbook = xlsx.read(req.file.buffer, { type: 'buffer' });
+        const sheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[sheetName];
+        const data = xlsx.utils.sheet_to_json(worksheet);
+
+        if (data.length === 0) {
+            return res.status(400).json({ error: 'Excel file is empty or has incorrect format.' });
+        }
+
+        client = await pool.connect();
+        await client.query('BEGIN');
+        let processedCount = 0;
+        let skippedCount = 0;
+        let errorMessages = [];
+
+        for (const row of data) {
+            const origin_region = row.origin_region?.toString().trim();
+            const destination_region = row.destination_region?.toString().trim();
+            const container_type = row.container_type?.toString().trim();
+            const rate = parseFloat(row.rate);
+
+            if (!origin_region || !destination_region || !container_type || isNaN(rate)) {
+                console.warn(`Admin: Skipping base rate row due to invalid data: ${JSON.stringify(row)}`);
+                skippedCount++;
+                continue; 
+            }
+
+            // UPSERT
+            const upsertQuery = `
+                INSERT INTO base_rates (origin_region, destination_region, container_type, rate)
+                VALUES ($1, $2, $3, $4)
+                ON CONFLICT (origin_region, destination_region, container_type)
+                DO UPDATE SET rate = EXCLUDED.rate;
+            `;
+            try {
+                 await client.query(upsertQuery, [origin_region, destination_region, container_type, rate]);
+                 processedCount++;
+            } catch (upsertError) {
+                 // Ловим ошибку внешнего ключа для container_type
+                 if (upsertError.code === '23503') { // foreign_key_violation
+                     const errorMsg = `Skipping row: Container type '${container_type}' does not exist. Add it first. Row: ${JSON.stringify(row)}`;
+                     console.warn(`Admin: ${errorMsg}`);
+                     errorMessages.push(errorMsg);
+                     skippedCount++;
+                 } else {
+                     // Другие ошибки при вставке/обновлении
+                     throw upsertError; // Перебрасываем другие ошибки, чтобы откатить транзакцию
+                 }
+            }
+        }
+        
+        await client.query('COMMIT');
+        console.log(`Admin: Base rates Excel file processed. ${processedCount} rows processed, ${skippedCount} rows skipped.`);
+        let responseMessage = `Файл успешно обработан. Обработано строк: ${processedCount}. Пропущено строк: ${skippedCount}.`;
+        if (errorMessages.length > 0) {
+            responseMessage += "\nОшибки: \n" + errorMessages.join("\n");
+        }
+        res.json({ message: responseMessage });
+
+    } catch (error) {
+        console.error('Admin: Error processing base rates Excel file:', error);
+        if (client) await client.query('ROLLBACK');
+        res.status(500).json({ error: 'Failed to process Excel file', detail: error.message });
+    } finally {
+        if (client) client.release();
+    }
+});
+
+// -- Настройки модели (CRUD) --
 app.get('/api/admin/model-settings', async (req, res) => {
   let client;
   try {
-    console.log("GET /api/admin/model-settings: Connecting...");
     client = await pool.connect();
-    console.log("GET /api/admin/model-settings: Fetching...");
     const result = await client.query('SELECT setting_key, setting_value, description FROM model_settings');
-    console.log(`GET /api/admin/model-settings: Fetched ${result.rowCount} settings.`);
     res.json(result.rows);
   } catch (error) {
-    console.error('Error fetching admin model settings:', error);
-    res.status(500).json({ error: 'Failed to fetch model settings for admin' });
+    console.error('Admin: Error fetching model settings:', error);
+    res.status(500).json({ error: 'Failed to fetch model settings' });
   } finally {
-    if (client) {
-        console.log("GET /api/admin/model-settings: Releasing client.");
-        client.release();
-    }
+    if (client) client.release();
   }
 });
 
-// PUT /api/admin/model-settings/:setting_key - Обновление настройки модели
 app.put('/api/admin/model-settings/:setting_key', async (req, res) => {
     const { setting_key } = req.params;
     const { setting_value } = req.body;
-    console.log(`PUT /api/admin/model-settings/${setting_key}: Received request.`, req.body);
     if (setting_value === undefined) {
-        console.log(`PUT /api/admin/model-settings/${setting_key}: Bad request - missing value.`);
         return res.status(400).json({ error: 'Missing required field: setting_value' });
     }
-    
     // Дополнительная валидация для sensitivityCoeff
     if (setting_key === 'sensitivityCoeff') {
         const parsedValue = parseFloat(setting_value);
         if (isNaN(parsedValue) || parsedValue < 0 || parsedValue > 1) {
-            console.log(`PUT /api/admin/model-settings/${setting_key}: Bad request - invalid sensitivityCoeff.`);
             return res.status(400).json({ error: 'Invalid sensitivityCoeff value. Must be between 0 and 1.' });
         }
     }
-
     let client;
     try {
-        console.log(`PUT /api/admin/model-settings/${setting_key}: Connecting...`);
         client = await pool.connect();
-        console.log(`PUT /api/admin/model-settings/${setting_key}: Updating...`);
         const result = await client.query(
             'UPDATE model_settings SET setting_value = $1 WHERE setting_key = $2 RETURNING *',
             [setting_value, setting_key]
         );
-        if (result.rows.length === 0) {
-            console.log(`PUT /api/admin/model-settings/${setting_key}: Setting not found.`);
-            return res.status(404).json({ error: 'Model setting not found' });
-        }
-        console.log(`PUT /api/admin/model-settings/${setting_key}: Updated successfully.`, result.rows[0]);
+        if (result.rows.length === 0) return res.status(404).json({ error: 'Model setting not found' });
         res.json(result.rows[0]);
     } catch (error) {
-        console.error(`Error updating model setting ${setting_key}:`, error);
-        res.status(500).json({ error: 'Failed to update model setting' });
+        console.error('Admin: Error updating model setting:', error);
+        res.status(500).json({ error: 'Failed to update model setting', detail: error.message });
     } finally {
-        if (client) {
-            console.log(`PUT /api/admin/model-settings/${setting_key}: Releasing client.`);
-            client.release();
-        }
+        if (client) client.release();
     }
 });
 
-// GET /api/admin/seasonality - Получение данных сезонности
-app.get('/api/admin/seasonality', async (req, res) => {
-  let client;
-  try {
-    console.log("GET /api/admin/seasonality: Connecting...");
-    client = await pool.connect();
-    console.log("GET /api/admin/seasonality: Fetching factors...");
-    const factorsResult = await client.query('SELECT * FROM seasonality_factors ORDER BY origin_region, destination_region, month');
-    console.log(`GET /api/admin/seasonality: Fetched ${factorsResult.rowCount} factors.`);
-    console.log("GET /api/admin/seasonality: Fetching confidence...");
-    const confidenceResult = await client.query('SELECT * FROM seasonality_confidence ORDER BY origin_region, destination_region');
-    console.log(`GET /api/admin/seasonality: Fetched ${confidenceResult.rowCount} confidence scores.`);
-    res.json({ factors: factorsResult.rows, confidence: confidenceResult.rows });
-  } catch (error) {
-    console.error('Error fetching admin seasonality data:', error);
-    res.status(500).json({ error: 'Failed to fetch seasonality data for admin' });
-  } finally {
-    if (client) {
-        console.log("GET /api/admin/seasonality: Releasing client.");
-        client.release();
-    }
-  }
-});
-
-// POST /api/admin/seasonality/recalculate - Пересчет данных сезонности
-app.post('/api/admin/seasonality/recalculate', async (req, res) => {
-    console.log("POST /api/admin/seasonality/recalculate: Received request.");
-    try {
-        console.log("POST /api/admin/seasonality/recalculate: Calling recalculation function...");
-        // Вызываем функцию пересчета из модуля seasonality_analyzer
-        // Передаем true, чтобы форсировать обновление
-        await initializeAndUpdateSeasonalityData(true); 
-        console.log("POST /api/admin/seasonality/recalculate: Recalculation finished.");
-        res.status(200).json({ message: 'Seasonality data recalculation triggered successfully.' });
-    } catch (error) {
-        console.error('Error triggering seasonality recalculation:', error);
-        res.status(500).json({ error: 'Failed to trigger seasonality recalculation', details: error.message });
-    }
-});
-
-// GET /api/admin/calculation-history - Получение истории расчетов
-app.get('/api/admin/calculation-history', async (req, res) => {
-  let client;
-  try {
-    console.log("GET /api/admin/calculation-history: Connecting...");
-    client = await pool.connect();
-    console.log("GET /api/admin/calculation-history: Fetching...");
-    const result = await client.query('SELECT * FROM calculation_history ORDER BY timestamp DESC LIMIT 100'); // Limit for performance
-    console.log(`GET /api/admin/calculation-history: Fetched ${result.rowCount} records.`);
-    res.json(result.rows);
-  } catch (error) {
-    console.error('Error fetching admin calculation history:', error);
-    res.status(500).json({ error: 'Failed to fetch calculation history for admin' });
-  } finally {
-    if (client) {
-        console.log("GET /api/admin/calculation-history: Releasing client.");
-        client.release();
-    }
-  }
-});
-
-// --- ЗАПУСК СЕРВЕРА --- 
+// --- Запуск сервера --- 
 
 console.log("Starting system initialization...");
 initializeSystem().then(() => {
