@@ -1,4 +1,4 @@
-// Интеграционный модуль v4.6: Полная версия + Добавлены недостающие API админки, исправлена история.
+/ Интеграционный модуль v4.7: Добавлены GET эндпоинты для редактирования индексов и ставок.
 
 import express from 'express';
 import cors from 'cors';
@@ -27,10 +27,10 @@ const upload = multer({ storage: storage });
 // Подключение к базе данных
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  // SSL configuration based on environment (e.g., Render)
-  ssl: process.env.DATABASE_URL && process.env.DATABASE_URL.includes('render.com') 
-       ? { rejectUnauthorized: false } 
-       : false 
+  ssl: {
+    rejectUnauthorized: false,
+    // sslmode: 'require' // Раскомментируйте, если ваша БД требует SSL
+  }
 });
 
 // Создание экземпляра Express
@@ -50,7 +50,7 @@ app.get('/admin', (req, res) => {
 // --- Инициализация системы --- 
 async function initializeSystem() {
   try {
-    console.log('Initializing freight calculator system v4.6 (Admin-Managed Data - Full API).');
+    console.log('Initializing freight calculator system v4.7 (Admin-Managed Data - Edit Endpoints Added).');
     await initializeDatabaseTables(); 
     console.log('System initialization completed');
   } catch (error) {
@@ -59,7 +59,7 @@ async function initializeSystem() {
   }
 }
 
-// --- Инициализация таблиц БД (Логика миграции из v4.1/v4.4 + Robustness) --- 
+// --- Инициализация таблиц БД (Логика миграции из v4.1, v4.6) --- 
 async function initializeDatabaseTables() {
   console.log("Initializing database tables...");
   let client;
@@ -72,7 +72,7 @@ async function initializeDatabaseTables() {
       CREATE TABLE IF NOT EXISTS ports (
         id SERIAL PRIMARY KEY,
         name VARCHAR(255) NOT NULL,
-        code VARCHAR(10) UNIQUE NOT NULL,
+        code VARCHAR(10) UNIQUE, -- Сделаем UNIQUE NULLABLE, если код может отсутствовать
         region VARCHAR(50),
         latitude NUMERIC,
         longitude NUMERIC,
@@ -80,14 +80,23 @@ async function initializeDatabaseTables() {
       );
     `);
     await client.query(`ALTER TABLE ports ADD COLUMN IF NOT EXISTS country VARCHAR(100);`);
+    // Убедимся, что code может быть null, если это допустимо бизнес-логикой
+    // Если код ОБЯЗАТЕЛЕН, то UNIQUE NOT NULL - правильно.
+    // Если код может быть null, но если есть, то уникальный:
+    // await client.query(`ALTER TABLE ports DROP CONSTRAINT IF EXISTS ports_code_key;`); // Сначала удалить старое ограничение
+    // await client.query(`CREATE UNIQUE INDEX IF NOT EXISTS ports_code_unique_not_null ON ports (code) WHERE code IS NOT NULL;`);
 
     // Таблица типов контейнеров
     await client.query(`
       CREATE TABLE IF NOT EXISTS container_types (
         id SERIAL PRIMARY KEY,
-        name VARCHAR(10) UNIQUE NOT NULL
+        name VARCHAR(50) UNIQUE NOT NULL, -- Увеличим длину на всякий случай
+        description TEXT -- Добавим поле описания, если нужно
       );
     `);
+    await client.query(`ALTER TABLE container_types ADD COLUMN IF NOT EXISTS description TEXT;`);
+    await client.query(`ALTER TABLE container_types ALTER COLUMN name TYPE VARCHAR(50);`); // Увеличим длину существующего поля
+
 
     // Таблица базовых ставок
     await client.query(`
@@ -95,12 +104,13 @@ async function initializeDatabaseTables() {
         id SERIAL PRIMARY KEY, 
         origin_region VARCHAR(50) NOT NULL,
         destination_region VARCHAR(50) NOT NULL,
-        container_type VARCHAR(10) NOT NULL,
+        container_type VARCHAR(50) NOT NULL, -- Увеличим длину
         rate NUMERIC NOT NULL,
         UNIQUE(origin_region, destination_region, container_type),
         FOREIGN KEY (container_type) REFERENCES container_types(name) ON DELETE RESTRICT ON UPDATE CASCADE
       );
     `);
+    await client.query(`ALTER TABLE base_rates ALTER COLUMN container_type TYPE VARCHAR(50);`);
 
     // Таблица конфигурации индексов
     await client.query(`
@@ -133,27 +143,25 @@ async function initializeDatabaseTables() {
         timestamp TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
         origin_port_code VARCHAR(10), 
         destination_port_code VARCHAR(10),
-        container_type VARCHAR(10) NOT NULL,
+        container_type VARCHAR(50) NOT NULL, -- Увеличим длину
         weight NUMERIC,
-        calculated_rate NUMERIC, -- Сделаем nullable на всякий случай, хотя должен быть NOT NULL
+        calculated_rate NUMERIC, -- Сделаем NULLABLE на всякий случай, если расчет мог не удаться
         user_email VARCHAR(255),
         origin_port_id INT, 
         destination_port_id INT, 
         index_values_used JSONB 
       );
     `);
-    // Добавляем недостающие колонки, если их нет (делаем идемпотентным)
     await client.query(`ALTER TABLE calculation_history ADD COLUMN IF NOT EXISTS origin_port_id INT;`);
     await client.query(`ALTER TABLE calculation_history ADD COLUMN IF NOT EXISTS destination_port_id INT;`);
     await client.query(`ALTER TABLE calculation_history ADD COLUMN IF NOT EXISTS weight NUMERIC;`);
     await client.query(`ALTER TABLE calculation_history ADD COLUMN IF NOT EXISTS index_values_used JSONB;`);
-    await client.query(`ALTER TABLE calculation_history ADD COLUMN IF NOT EXISTS origin_port_code VARCHAR(10);`);
-    await client.query(`ALTER TABLE calculation_history ADD COLUMN IF NOT EXISTS destination_port_code VARCHAR(10);`);
-    // ВАЖНО: Добавляем calculated_rate, если его нет (для совместимости со старыми базами)
-    await client.query(`ALTER TABLE calculation_history ADD COLUMN IF NOT EXISTS calculated_rate NUMERIC;`); 
-    // Удаляем старые колонки, если они есть
     await client.query(`ALTER TABLE calculation_history DROP COLUMN IF EXISTS origin_port;`);
     await client.query(`ALTER TABLE calculation_history DROP COLUMN IF EXISTS destination_port;`);
+    await client.query(`ALTER TABLE calculation_history ADD COLUMN IF NOT EXISTS origin_port_code VARCHAR(10);`);
+    await client.query(`ALTER TABLE calculation_history ADD COLUMN IF NOT EXISTS destination_port_code VARCHAR(10);`);
+    await client.query(`ALTER TABLE calculation_history ADD COLUMN IF NOT EXISTS calculated_rate NUMERIC;`); // Добавлено в v4.6 через миграцию
+    await client.query(`ALTER TABLE calculation_history ALTER COLUMN container_type TYPE VARCHAR(50);`);
 
     // Таблицы для анализа сезонности
     await initializeSeasonalityTables(client); 
@@ -247,7 +255,8 @@ app.get('/api/container-types', async (req, res) => {
   let client;
   try {
     client = await pool.connect();
-    const result = await client.query('SELECT id, name FROM container_types ORDER BY name');
+    // Возвращаем name и description
+    const result = await client.query('SELECT id, name, description FROM container_types ORDER BY name');
     res.json(result.rows);
   } catch (error) {
     console.error('Error fetching container types:', error);
@@ -282,7 +291,9 @@ app.post('/api/calculate', async (req, res) => {
         const originResult = await client.query('SELECT id, region FROM ports WHERE code = $1', [originPort]);
         const destinationResult = await client.query('SELECT id, region FROM ports WHERE code = $1', [destinationPort]);
         if (originResult.rows.length === 0 || destinationResult.rows.length === 0) {
-            throw new Error('Origin or destination port not found in database.');
+            // Возвращаем 404, если порт не найден, чтобы фронтенд мог это обработать
+            console.warn(`POST /api/calculate: Origin or destination port not found. Origin: ${originPort}, Dest: ${destinationPort}`);
+            return res.status(404).json({ error: 'Origin or destination port not found in database.' });
         }
         originPortId = originResult.rows[0].id;
         originRegion = originResult.rows[0].region;
@@ -293,6 +304,8 @@ app.post('/api/calculate', async (req, res) => {
     }
 
     if (!originRegion || !destinationRegion) {
+         // Эта ошибка не должна возникать, если порты найдены выше
+         console.error('POST /api/calculate: Could not determine region even though ports were found.');
          throw new Error('Could not determine region for origin or destination port.');
     }
 
@@ -316,7 +329,9 @@ app.post('/api/calculate', async (req, res) => {
     // Проверка на ошибки расчета (например, отсутствие базовой ставки)
     if (calculationResult.error) {
         console.error("POST /api/calculate: Calculation error:", calculationResult.error);
-        return res.status(400).json({ error: calculationResult.error });
+        // Возвращаем 400 или 404 в зависимости от типа ошибки
+        const statusCode = calculationResult.error.includes("base rate not found") ? 404 : 400;
+        return res.status(statusCode).json({ error: calculationResult.error });
     }
 
     console.log("POST /api/calculate: Calculation successful.", calculationResult);
@@ -349,17 +364,21 @@ app.post('/api/calculate', async (req, res) => {
 
   } catch (error) {
     console.error('Error during calculation:', error);
-    res.status(500).json({ error: error.message || 'Internal server error during calculation' });
+    // Отправляем 500 только для непредвиденных серверных ошибок
+    if (!res.headersSent) { // Проверяем, не был ли уже отправлен ответ (например, 404 для порта)
+        res.status(500).json({ error: 'Internal server error during calculation' });
+    }
   }
 });
 
-// --- АДМИН API (v4.6 - Полная версия) --- 
+// --- АДМИН API (v4.7) --- 
 
 // -- Порты (CRUD) --
 app.get('/api/admin/ports', async (req, res) => {
   let client;
   try {
     client = await pool.connect();
+    // Убедимся, что выбираем все нужные поля
     const result = await client.query('SELECT id, name, code, region, latitude, longitude, country FROM ports ORDER BY name');
     res.json(result.rows);
   } catch (error) {
@@ -374,7 +393,7 @@ app.get('/api/admin/ports/:id', async (req, res) => {
     let client;
     try {
         client = await pool.connect();
-        const result = await client.query('SELECT * FROM ports WHERE id = $1', [id]);
+        const result = await client.query('SELECT id, name, code, region, latitude, longitude, country FROM ports WHERE id = $1', [id]);
         if (result.rows.length === 0) return res.status(404).json({ error: 'Port not found' });
         res.json(result.rows[0]);
     } catch (error) {
@@ -386,19 +405,20 @@ app.get('/api/admin/ports/:id', async (req, res) => {
 });
 app.post('/api/admin/ports', async (req, res) => {
     const { name, code, region, latitude, longitude, country } = req.body;
-    if (!name || !code) return res.status(400).json({ error: 'Missing required fields: name, code' });
+    // Код может быть null, если разрешено схемой
+    if (!name) return res.status(400).json({ error: 'Missing required field: name' });
     let client;
     try {
         client = await pool.connect();
         const result = await client.query(
             'INSERT INTO ports (name, code, region, latitude, longitude, country) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
-            [name, code, region, latitude, longitude, country]
+            [name, code || null, region || null, latitude || null, longitude || null, country || null] // Явно передаем null, если значение пустое
         );
         res.status(201).json(result.rows[0]);
     } catch (error) {
         console.error('Admin: Error adding port:', error);
-        if (error.code === '23505') { // unique_violation
-             return res.status(409).json({ error: 'Another port with this code already exists.' });
+        if (error.code === '23505') { // unique_violation (вероятно, на code)
+             return res.status(409).json({ error: 'Port with this code already exists.' });
         }
         res.status(500).json({ error: 'Failed to add port', detail: error.message });
     } finally {
@@ -408,13 +428,13 @@ app.post('/api/admin/ports', async (req, res) => {
 app.put('/api/admin/ports/:id', async (req, res) => {
     const { id } = req.params;
     const { name, code, region, latitude, longitude, country } = req.body;
-    if (!name || !code) return res.status(400).json({ error: 'Missing required fields: name, code' });
+    if (!name) return res.status(400).json({ error: 'Missing required field: name' });
     let client;
     try {
         client = await pool.connect();
         const result = await client.query(
             'UPDATE ports SET name = $1, code = $2, region = $3, latitude = $4, longitude = $5, country = $6 WHERE id = $7 RETURNING *',
-            [name, code, region, latitude, longitude, country, id]
+            [name, code || null, region || null, latitude || null, longitude || null, country || null, id]
         );
         if (result.rows.length === 0) return res.status(404).json({ error: 'Port not found' });
         res.json(result.rows[0]);
@@ -433,11 +453,16 @@ app.delete('/api/admin/ports/:id', async (req, res) => {
     let client;
     try {
         client = await pool.connect();
+        // Добавить проверку на использование порта в истории?
         const result = await client.query('DELETE FROM ports WHERE id = $1 RETURNING id', [id]);
         if (result.rows.length === 0) return res.status(404).json({ error: 'Port not found' });
-        res.json({ message: 'Port deleted successfully' });
+        res.status(204).send(); // Успешное удаление без контента
     } catch (error) {
         console.error('Admin: Error deleting port:', error);
+        // Обработка ошибки внешнего ключа, если порт используется
+        if (error.code === '23503') { 
+             return res.status(400).json({ error: 'Cannot delete port: it is referenced in calculation history or elsewhere.' });
+        }
         res.status(500).json({ error: 'Failed to delete port', detail: error.message });
     } finally {
         if (client) client.release();
@@ -449,7 +474,8 @@ app.get('/api/admin/container-types', async (req, res) => {
     let client;
     try {
         client = await pool.connect();
-        const result = await client.query('SELECT id, name FROM container_types ORDER BY name');
+        // Возвращаем name и description
+        const result = await client.query('SELECT id, name, description FROM container_types ORDER BY name');
         res.json(result.rows);
     } catch (error) {
         console.error('Admin: Error fetching container types:', error);
@@ -458,13 +484,29 @@ app.get('/api/admin/container-types', async (req, res) => {
         if (client) client.release();
     }
 });
+// GET для редактирования (если понадобится)
+app.get('/api/admin/container-types/:id', async (req, res) => {
+    const { id } = req.params;
+    let client;
+    try {
+        client = await pool.connect();
+        const result = await client.query('SELECT id, name, description FROM container_types WHERE id = $1', [id]);
+        if (result.rows.length === 0) return res.status(404).json({ error: 'Container type not found' });
+        res.json(result.rows[0]);
+    } catch (error) {
+        console.error('Admin: Error fetching container type details:', error);
+        res.status(500).json({ error: 'Failed to fetch container type details' });
+    } finally {
+        if (client) client.release();
+    }
+});
 app.post('/api/admin/container-types', async (req, res) => {
-    const { name } = req.body;
+    const { name, description } = req.body;
     if (!name) return res.status(400).json({ error: 'Missing required field: name' });
     let client;
     try {
         client = await pool.connect();
-        const result = await client.query('INSERT INTO container_types (name) VALUES ($1) RETURNING *', [name]);
+        const result = await client.query('INSERT INTO container_types (name, description) VALUES ($1, $2) RETURNING *', [name, description || null]);
         res.status(201).json(result.rows[0]);
     } catch (error) {
         console.error('Admin: Error adding container type:', error);
@@ -476,21 +518,57 @@ app.post('/api/admin/container-types', async (req, res) => {
         if (client) client.release();
     }
 });
-app.delete('/api/admin/container-types/:name', async (req, res) => {
-    const { name } = req.params;
+// PUT для редактирования (если понадобится)
+app.put('/api/admin/container-types/:id', async (req, res) => {
+    const { id } = req.params;
+    const { name, description } = req.body;
+    if (!name) return res.status(400).json({ error: 'Missing required field: name' });
     let client;
     try {
         client = await pool.connect();
+        const result = await client.query(
+            'UPDATE container_types SET name = $1, description = $2 WHERE id = $3 RETURNING *',
+            [name, description || null, id]
+        );
+        if (result.rows.length === 0) return res.status(404).json({ error: 'Container type not found' });
+        res.json(result.rows[0]);
+    } catch (error) {
+        console.error('Admin: Error updating container type:', error);
+         if (error.code === '23505') { // unique_violation
+             return res.status(409).json({ error: 'Another container type with this name already exists.' });
+        }
+        res.status(500).json({ error: 'Failed to update container type', detail: error.message });
+    } finally {
+        if (client) client.release();
+    }
+});
+app.delete('/api/admin/container-types/:id', async (req, res) => {
+    const { id } = req.params;
+    let client;
+    try {
+        client = await pool.connect();
+        // Получаем имя перед удалением для проверки связей
+        const nameResult = await client.query('SELECT name FROM container_types WHERE id = $1', [id]);
+        if (nameResult.rows.length === 0) return res.status(404).json({ error: 'Container type not found' });
+        const containerName = nameResult.rows[0].name;
+
         // Проверка, используется ли тип контейнера в базовых ставках
-        const checkUsage = await client.query('SELECT 1 FROM base_rates WHERE container_type = $1 LIMIT 1', [name]);
+        const checkUsage = await client.query('SELECT 1 FROM base_rates WHERE container_type = $1 LIMIT 1', [containerName]);
         if (checkUsage.rows.length > 0) {
             return res.status(400).json({ error: 'Cannot delete container type: it is used in base rates.' });
         }
-        const result = await client.query('DELETE FROM container_types WHERE name = $1 RETURNING name', [name]);
-        if (result.rows.length === 0) return res.status(404).json({ error: 'Container type not found' });
-        res.json({ message: 'Container type deleted successfully' });
+        // Проверка использования в истории расчетов
+        const checkHistoryUsage = await client.query('SELECT 1 FROM calculation_history WHERE container_type = $1 LIMIT 1', [containerName]);
+         if (checkHistoryUsage.rows.length > 0) {
+            return res.status(400).json({ error: 'Cannot delete container type: it is used in calculation history.' });
+        }
+
+        const result = await client.query('DELETE FROM container_types WHERE id = $1 RETURNING id', [id]);
+        // if (result.rows.length === 0) return res.status(404).json({ error: 'Container type not found' }); // Уже проверено выше
+        res.status(204).send();
     } catch (error) {
         console.error('Admin: Error deleting container type:', error);
+        // Добавим обработку ошибки внешнего ключа на всякий случай
         if (error.code === '23503') { 
              return res.status(400).json({ error: 'Cannot delete container type: it is still referenced elsewhere.' });
         }
@@ -505,7 +583,7 @@ app.get('/api/admin/calculation-history', async (req, res) => {
   let client;
   try {
     client = await pool.connect();
-    // Используем коды портов из таблицы history и проверяем наличие calculated_rate
+    // Используем коды портов из таблицы history
     const result = await client.query(`
         SELECT 
             h.id, 
@@ -519,15 +597,11 @@ app.get('/api/admin/calculation-history', async (req, res) => {
             h.index_values_used 
         FROM calculation_history h
         ORDER BY h.timestamp DESC
-        LIMIT 100 
+        LIMIT 100 -- Ограничение для производительности
     `);
     res.json(result.rows);
   } catch (error) {
     console.error('Admin: Error fetching calculation history:', error);
-    // Явно проверяем ошибку отсутствия колонки
-    if (error.code === '42703' && error.message.includes('calculated_rate')) {
-         return res.status(500).json({ error: 'Database schema error: Column "calculated_rate" does not exist in "calculation_history". Please apply the database migration.' });
-    }
     res.status(500).json({ error: 'Failed to fetch calculation history', detail: error.message });
   } finally {
     if (client) client.release();
@@ -549,19 +623,19 @@ app.get('/api/admin/index-config', async (req, res) => {
     }
 });
 
-// ДОБАВЛЕНО: GET /api/admin/index-config/:index_name (для редактирования)
+// *** НОВЫЙ ЭНДПОИНТ v4.7: Получение данных одного индекса для редактирования ***
 app.get('/api/admin/index-config/:index_name', async (req, res) => {
     const { index_name } = req.params;
     let client;
     try {
         client = await pool.connect();
-        const result = await client.query('SELECT index_name, baseline_value, weight_percentage, current_value FROM index_config WHERE index_name = $1', [index_name]);
+        const result = await client.query('SELECT index_name, baseline_value, weight_percentage, current_value, last_updated FROM index_config WHERE index_name = $1', [index_name]);
         if (result.rows.length === 0) {
             return res.status(404).json({ error: 'Index config not found' });
         }
         res.json(result.rows[0]);
     } catch (error) {
-        console.error('Admin: Error fetching specific index config:', error);
+        console.error('Admin: Error fetching index config details:', error);
         res.status(500).json({ error: 'Failed to fetch index config details' });
     } finally {
         if (client) client.release();
@@ -598,6 +672,7 @@ app.post('/api/admin/index-config', async (req, res) => {
 
 app.put('/api/admin/index-config/:index_name', async (req, res) => {
     const { index_name } = req.params;
+    // Запрещаем менять index_name через PUT, он ключ
     const { baseline_value, weight_percentage, current_value } = req.body;
     if (baseline_value == null || weight_percentage == null || current_value == null) {
         return res.status(400).json({ error: 'Missing required fields for index config update' });
@@ -629,7 +704,7 @@ app.delete('/api/admin/index-config/:index_name', async (req, res) => {
         client = await pool.connect();
         const result = await client.query('DELETE FROM index_config WHERE index_name = $1 RETURNING index_name', [index_name]);
         if (result.rows.length === 0) return res.status(404).json({ error: 'Index config not found' });
-        res.json({ message: 'Index config deleted successfully' });
+        res.status(204).send();
     } catch (error) {
         console.error('Admin: Error deleting index config:', error);
         res.status(500).json({ error: 'Failed to delete index config', detail: error.message });
@@ -666,39 +741,25 @@ app.post('/api/admin/indices/upload', upload.single('indicesFile'), async (req, 
             const baseline_value = parseFloat(row.baseline_value);
             const weight_percentage = parseFloat(row.weight_percentage);
             
-            // ИСПРАВЛЕНО v4.4: Обработка current_value, считая пустые/null/undefined как 0.
-            let current_value = NaN; // Default to NaN
-            const raw_current_value = row.current_value; // Store original value for checks
+            // Обработка current_value, считая пустые/null/undefined/'' как 0.
+            let current_value = NaN; 
+            const raw_current_value = row.current_value; 
 
-            // Check if the value exists and is not an empty string before parsing
             if (raw_current_value !== undefined && raw_current_value !== null && raw_current_value !== '') {
-                // Try parsing non-empty values
                 current_value = parseFloat(raw_current_value);
-                // If parsing results in NaN, but the raw value was '0', treat it as 0
                 if (isNaN(current_value) && raw_current_value.toString().trim() === '0') {
                      current_value = 0;
                 }
-            } else if (raw_current_value === 0) {
-                 // Explicitly handle numeric 0
-                 current_value = 0;
-            } else if (raw_current_value === undefined || raw_current_value === null || raw_current_value === '') {
-                 // Treat missing/empty cells as 0 based on user feedback
-                 console.warn(`Admin: Treating missing/empty current_value as 0 for index: ${row.index_name}`);
+            } else {
+                 // Пустые, null, undefined считаем как 0
                  current_value = 0;
             }
 
-            // Skip if parsing failed AND the original value wasn't explicitly 0 or treated as 0
-            if (isNaN(current_value)) {
-                 console.warn(`Admin: Skipping index row due to invalid non-numeric current_value after processing: ${JSON.stringify(row)}`);
-                 skippedCount++;
-                 continue;
-            }
-
-            // Проверка остальных полей
-            if (!index_name || isNaN(baseline_value) || isNaN(weight_percentage)) {
-                console.warn(`Admin: Skipping index row due to invalid name, baseline, or weight: ${JSON.stringify(row)}`);
+            // Проверка, что все значения корректны после обработки
+            if (!index_name || isNaN(baseline_value) || isNaN(weight_percentage) || isNaN(current_value)) {
+                console.warn(`Admin: Skipping index row due to invalid data after processing: ${JSON.stringify(row)} -> Parsed: name=${index_name}, baseline=${baseline_value}, weight=${weight_percentage}, current=${current_value}`);
                 skippedCount++;
-                continue; // Пропускаем строки с некорректными данными
+                continue; 
             }
              if (weight_percentage < 0 || weight_percentage > 100) {
                  console.warn(`Admin: Skipping index row due to invalid weight (${weight_percentage}): ${JSON.stringify(row)}`);
@@ -750,6 +811,25 @@ app.get('/api/admin/base-rates', async (req, res) => {
     }
 });
 
+// *** НОВЫЙ ЭНДПОИНТ v4.7: Получение данных одной базовой ставки для редактирования ***
+app.get('/api/admin/base-rates/:id', async (req, res) => {
+    const { id } = req.params;
+    let client;
+    try {
+        client = await pool.connect();
+        const result = await client.query('SELECT id, origin_region, destination_region, container_type, rate FROM base_rates WHERE id = $1', [id]);
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Base rate not found' });
+        }
+        res.json(result.rows[0]);
+    } catch (error) {
+        console.error('Admin: Error fetching base rate details:', error);
+        res.status(500).json({ error: 'Failed to fetch base rate details' });
+    } finally {
+        if (client) client.release();
+    }
+});
+
 app.post('/api/admin/base-rates', async (req, res) => {
     const { origin_region, destination_region, container_type, rate } = req.body;
     if (!origin_region || !destination_region || !container_type || rate == null) {
@@ -758,6 +838,12 @@ app.post('/api/admin/base-rates', async (req, res) => {
     let client;
     try {
         client = await pool.connect();
+        // Проверка существования container_type перед вставкой
+        const checkType = await client.query('SELECT 1 FROM container_types WHERE name = $1', [container_type]);
+        if (checkType.rows.length === 0) {
+             return res.status(400).json({ error: `Container type '${container_type}' does not exist. Please add it first.` });
+        }
+
         const result = await client.query(
             'INSERT INTO base_rates (origin_region, destination_region, container_type, rate) VALUES ($1, $2, $3, $4) RETURNING *',
             [origin_region, destination_region, container_type, rate]
@@ -769,10 +855,7 @@ app.post('/api/admin/base-rates', async (req, res) => {
         if (error.code === '23505') { // unique_violation
              return res.status(409).json({ error: 'Base rate for this combination already exists.' });
         }
-        // Обработка ошибки внешнего ключа (если container_type нет в справочнике)
-        if (error.code === '23503') { // foreign_key_violation
-             return res.status(400).json({ error: `Container type '${container_type}' does not exist. Please add it first.` });
-        }
+        // Ошибка внешнего ключа уже обработана выше
         res.status(500).json({ error: 'Failed to add base rate', detail: error.message });
     } finally {
         if (client) client.release();
@@ -820,7 +903,7 @@ app.delete('/api/admin/base-rates/:id', async (req, res) => {
         client = await pool.connect();
         const result = await client.query('DELETE FROM base_rates WHERE id = $1 RETURNING id', [id]);
         if (result.rows.length === 0) return res.status(404).json({ error: 'Base rate not found' });
-        res.json({ message: 'Base rate deleted successfully' });
+        res.status(204).send();
     } catch (error) {
         console.error('Admin: Error deleting base rate:', error);
         res.status(500).json({ error: 'Failed to delete base rate', detail: error.message });
@@ -852,6 +935,10 @@ app.post('/api/admin/base-rates/upload', upload.single('baseRatesFile'), async (
         let skippedCount = 0;
         let errorMessages = [];
 
+        // Получаем список существующих типов контейнеров для быстрой проверки
+        const validContainerTypesResult = await client.query('SELECT name FROM container_types');
+        const validContainerTypes = new Set(validContainerTypesResult.rows.map(r => r.name));
+
         for (const row of data) {
             const origin_region = row.origin_region?.toString().trim();
             const destination_region = row.destination_region?.toString().trim();
@@ -864,6 +951,15 @@ app.post('/api/admin/base-rates/upload', upload.single('baseRatesFile'), async (
                 continue; 
             }
 
+            // Проверка существования типа контейнера перед UPSERT
+            if (!validContainerTypes.has(container_type)) {
+                const errorMsg = `Skipping row: Container type '${container_type}' does not exist. Add it first. Row: ${JSON.stringify(row)}`;
+                console.warn(`Admin: ${errorMsg}`);
+                errorMessages.push(errorMsg);
+                skippedCount++;
+                continue;
+            }
+
             // UPSERT
             const upsertQuery = `
                 INSERT INTO base_rates (origin_region, destination_region, container_type, rate)
@@ -871,21 +967,9 @@ app.post('/api/admin/base-rates/upload', upload.single('baseRatesFile'), async (
                 ON CONFLICT (origin_region, destination_region, container_type)
                 DO UPDATE SET rate = EXCLUDED.rate;
             `;
-            try {
-                 await client.query(upsertQuery, [origin_region, destination_region, container_type, rate]);
-                 processedCount++;
-            } catch (upsertError) {
-                 // Ловим ошибку внешнего ключа для container_type
-                 if (upsertError.code === '23503') { // foreign_key_violation
-                     const errorMsg = `Skipping row: Container type '${container_type}' does not exist. Add it first. Row: ${JSON.stringify(row)}`;
-                     console.warn(`Admin: ${errorMsg}`);
-                     errorMessages.push(errorMsg);
-                     skippedCount++;
-                 } else {
-                     // Другие ошибки при вставке/обновлении
-                     throw upsertError; // Перебрасываем другие ошибки, чтобы откатить транзакцию
-                 }
-            }
+            // Ошибки внешнего ключа здесь быть не должно, т.к. проверили выше
+            await client.query(upsertQuery, [origin_region, destination_region, container_type, rate]);
+            processedCount++;
         }
         
         await client.query('COMMIT');
@@ -906,8 +990,7 @@ app.post('/api/admin/base-rates/upload', upload.single('baseRatesFile'), async (
 });
 
 // -- Настройки модели (CRUD) --
-// ДОБАВЛЕНО: GET /api/admin/calculation-config (синоним для model-settings)
-app.get(['/api/admin/model-settings', '/api/admin/calculation-config'], async (req, res) => {
+app.get('/api/admin/model-settings', async (req, res) => {
   let client;
   try {
     client = await pool.connect();
@@ -924,7 +1007,7 @@ app.get(['/api/admin/model-settings', '/api/admin/calculation-config'], async (r
 app.put('/api/admin/model-settings/:setting_key', async (req, res) => {
     const { setting_key } = req.params;
     const { setting_value } = req.body;
-    if (setting_value === undefined) {
+    if (setting_value === undefined || setting_value === null) { // Проверяем и на null
         return res.status(400).json({ error: 'Missing required field: setting_value' });
     }
     // Дополнительная валидация для sensitivityCoeff
@@ -939,7 +1022,7 @@ app.put('/api/admin/model-settings/:setting_key', async (req, res) => {
         client = await pool.connect();
         const result = await client.query(
             'UPDATE model_settings SET setting_value = $1 WHERE setting_key = $2 RETURNING *',
-            [setting_value, setting_key]
+            [setting_value.toString(), setting_key] // Приводим к строке на всякий случай
         );
         if (result.rows.length === 0) return res.status(404).json({ error: 'Model setting not found' });
         res.json(result.rows[0]);
