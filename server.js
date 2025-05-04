@@ -1,4 +1,4 @@
-// Интеграционный модуль v4.9: Заменена загрузка из CSV на жестко закодированные начальные данные из Excel.
+// Интеграционный модуль v4.10: Убрана зависимость от initial_data.js, данные читаются напрямую из extracted_data.json.
 
 import express from 'express';
 import cors from 'cors';
@@ -8,9 +8,8 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import multer from 'multer'; // Для обработки загрузки файлов
 import xlsx from 'xlsx'; // Для чтения Excel
-// import fs from 'fs'; // Больше не нужно для CSV
-// import csvParser from 'csv-parser'; // Больше не нужно для CSV
-import initialData from './initial_data.js'; // Импортируем жестко закодированные данные
+import fs from 'fs'; // Импортируем модуль fs для чтения файла
+// import initialData from './initial_data.js'; // Больше не нужно
 
 // Импорт модулей анализа и расчета
 import { initializeAndUpdateSeasonalityData, initializeSeasonalityTables, fetchSeasonalityFactor } from './seasonality_analyzer.js';
@@ -53,9 +52,9 @@ app.get('/admin', (req, res) => {
 // --- Инициализация системы --- 
 async function initializeSystem() {
   try {
-    console.log('Initializing freight calculator system v4.9 (Hardcoded Initial Data Load).');
+    console.log('Initializing freight calculator system v4.10 (Direct JSON Data Load).');
     await initializeDatabaseTables(); 
-    await loadInitialDataHardcoded(); // <--- Заменено на загрузку жестко закодированных данных
+    await loadInitialDataFromJson(); // <--- Заменено на загрузку из JSON
     console.log('System initialization completed');
   } catch (error) {
     console.error('Error initializing system:', error);
@@ -63,23 +62,36 @@ async function initializeSystem() {
   }
 }
 
-// --- Загрузка начальных данных (Жестко закодировано, v4.9) ---
-async function loadInitialDataHardcoded() {
-    console.log("Attempting to load hardcoded initial data...");
+// --- Загрузка начальных данных из JSON (v4.10) ---
+async function loadInitialDataFromJson() {
+    console.log("Attempting to load initial data from extracted_data.json...");
     let client;
+    let initialData;
+
+    // Чтение и парсинг JSON файла
+    try {
+        const jsonFilePath = path.join(__dirname, 'extracted_data.json');
+        const jsonData = fs.readFileSync(jsonFilePath, 'utf8');
+        initialData = JSON.parse(jsonData);
+        console.log("Successfully loaded and parsed extracted_data.json");
+    } catch (err) {
+        console.error("Fatal Error: Could not read or parse extracted_data.json. Cannot load initial data.", err);
+        throw new Error("Failed to load initial data from JSON file."); // Прерываем инициализацию, если файл не найден/невалиден
+    }
+
+    if (!initialData || !initialData.ports || !initialData.container_types || !initialData.indices) {
+        console.error("Fatal Error: extracted_data.json is missing required keys (ports, container_types, indices).");
+        throw new Error("Invalid initial data structure in JSON file.");
+    }
 
     try {
         client = await pool.connect();
 
         // 1. Загрузка портов
-        console.log("Loading hardcoded ports...");
+        console.log("Loading ports from JSON...");
         let portCount = 0;
         for (const port of initialData.ports) {
             try {
-                // Используем code как уникальный идентификатор, если он есть, иначе name?
-                // В данных из Excel code пустой. Используем name для ON CONFLICT?
-                // Или просто вставляем без ON CONFLICT, если дубликаты не критичны при первом запуске?
-                // Выберем ON CONFLICT (name), предполагая, что имена портов уникальны.
                 await client.query(
                     `INSERT INTO ports (name, code, region, country, latitude, longitude)
                      VALUES ($1, $2, $3, $4, $5, $6)
@@ -94,7 +106,7 @@ async function loadInitialDataHardcoded() {
         console.log(`Finished loading ports. ${portCount} rows processed.`);
 
         // 2. Загрузка типов контейнеров
-        console.log("Loading hardcoded container types...");
+        console.log("Loading container types from JSON...");
         let ctCount = 0;
         for (const ct of initialData.container_types) {
             try {
@@ -112,7 +124,7 @@ async function loadInitialDataHardcoded() {
         console.log(`Finished loading container types. ${ctCount} rows processed.`);
 
         // 3. Загрузка конфигурации индексов
-        console.log("Loading hardcoded index config...");
+        console.log("Loading index config from JSON...");
         let icCount = 0;
         for (const index of initialData.indices) {
             try {
@@ -137,13 +149,12 @@ async function loadInitialDataHardcoded() {
         console.log(`Finished loading index config. ${icCount} rows processed.`);
         
         // 4. Загрузка базовых ставок (ОСТАВЛЕНО ПУСТЫМ - загрузка через админку)
-        // Если нужно добавить начальные базовые ставки, их можно добавить сюда по аналогии
         console.log("Skipping initial base rate loading. Base rates should be managed via admin panel.");
 
         console.log("Initial data loading process completed.");
 
     } catch (error) {
-        console.error("Error loading initial hardcoded data:", error);
+        console.error("Error loading initial data into database:", error);
         // Не прерываем запуск сервера, но логируем ошибку
     } finally {
         if (client) { client.release(); console.log("Database client released after initial data load."); }
