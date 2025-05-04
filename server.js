@@ -49,6 +49,11 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
+// Redirect /admin to /admin.html for convenience
+app.get('/admin', (req, res) => {
+  res.redirect('/admin.html');
+});
+
 // --- Инициализация системы --- 
 async function initializeSystem() {
   try {
@@ -393,7 +398,7 @@ app.post('/api/calculate', async (req, res) => {
         if (currentValues[indexName] === null || currentValues[indexName] === undefined) {
             console.error(`FATAL: Missing current value for required index ${indexName}. Calculation cannot proceed.`);
             missingCurrentValue = true;
-            break;
+            break; // Выход из цикла, если не хватает значения
         }
         indexConfig[indexName] = {
             ...indexStaticConfig[indexName],
@@ -421,16 +426,21 @@ app.post('/api/calculate', async (req, res) => {
     
     if (email && result.finalRate !== -1) {
       console.log("POST /api/calculate: Saving request to history...");
-      await saveRequestToHistory(
-          originPort, 
-          destinationPort, 
-          containerType, 
-          weight, 
-          result.finalRate, 
-          email, 
-          result.calculationDetails?.indexSources
-      );
-      console.log("POST /api/calculate: Request saved to history.");
+      try {
+        await saveRequestToHistory(
+            originPort, 
+            destinationPort, 
+            containerType, 
+            weight, 
+            result.finalRate, 
+            email, 
+            result.calculationDetails?.indexSources
+        );
+        console.log("POST /api/calculate: Request saved to history.");
+      } catch (historyError) {
+          console.error("Error saving calculation request to history:", historyError);
+          // Не прерываем ответ пользователю, но логируем ошибку
+      }
     }
     
     if (result.error) {
@@ -788,37 +798,36 @@ app.get('/api/admin/base-rates', async (req, res) => {
   }
 });
 
-// POST /api/admin/base-rates - Добавление/Обновление базовой ставки
+// POST /api/admin/base-rates - Добавление/обновление базовой ставки
 app.post('/api/admin/base-rates', async (req, res) => {
     const { origin_region, destination_region, container_type, rate } = req.body;
     console.log("POST /api/admin/base-rates: Received request.", req.body);
-    if (!origin_region || !destination_region || !container_type || rate === undefined || rate === null) {
+    if (!origin_region || !destination_region || !container_type || rate === undefined) {
         console.log("POST /api/admin/base-rates: Bad request - missing fields.");
         return res.status(400).json({ error: 'Missing required fields: origin_region, destination_region, container_type, rate' });
     }
-    const numericRate = parseFloat(rate);
-    if (isNaN(numericRate) || numericRate < 0) {
+    const parsedRate = parseFloat(rate);
+    if (isNaN(parsedRate) || parsedRate < 0) {
         console.log("POST /api/admin/base-rates: Bad request - invalid rate.");
-        return res.status(400).json({ error: 'Invalid rate value' });
+        return res.status(400).json({ error: 'Invalid rate value. Must be a non-negative number.' });
     }
     let client;
     try {
         console.log("POST /api/admin/base-rates: Connecting...");
         client = await pool.connect();
         console.log("POST /api/admin/base-rates: Upserting...");
-        const result = await client.query(
-            `INSERT INTO base_rates (origin_region, destination_region, container_type, rate)
-             VALUES ($1, $2, $3, $4)
-             ON CONFLICT (origin_region, destination_region, container_type)
-             DO UPDATE SET rate = EXCLUDED.rate
-             RETURNING *`,
-            [origin_region, destination_region, container_type, numericRate]
-        );
+        const result = await client.query(`
+            INSERT INTO base_rates (origin_region, destination_region, container_type, rate)
+            VALUES ($1, $2, $3, $4)
+            ON CONFLICT (origin_region, destination_region, container_type)
+            DO UPDATE SET rate = $4
+            RETURNING *;
+        `, [origin_region, destination_region, container_type, parsedRate]);
         console.log("POST /api/admin/base-rates: Upserted successfully.", result.rows[0]);
         res.status(201).json(result.rows[0]);
     } catch (error) {
         console.error('Error upserting base rate:', error);
-        res.status(500).json({ error: 'Failed to upsert base rate' });
+        res.status(500).json({ error: 'Failed to add or update base rate' });
     } finally {
         if (client) {
             console.log("POST /api/admin/base-rates: Releasing client.");
@@ -861,6 +870,7 @@ app.get('/api/admin/index-config', async (req, res) => {
     console.log("GET /api/admin/index-config: Connecting...");
     client = await pool.connect();
     console.log("GET /api/admin/index-config: Fetching...");
+    // Запрашиваем ВСЕ поля, включая current_value и last_updated
     const result = await client.query('SELECT index_name, baseline_value, weight_percentage, current_value, last_updated FROM index_config ORDER BY index_name');
     console.log(`GET /api/admin/index-config: Fetched ${result.rowCount} configs.`);
     res.json(result.rows);
@@ -875,24 +885,31 @@ app.get('/api/admin/index-config', async (req, res) => {
   }
 });
 
-// PUT /api/admin/index-config/:index_name - Обновление конфигурации индекса
+// PUT /api/admin/index-config/:index_name - Обновление конфигурации индекса (включая current_value)
 app.put('/api/admin/index-config/:index_name', async (req, res) => {
     const { index_name } = req.params;
     const { baseline_value, weight_percentage, current_value } = req.body;
     console.log(`PUT /api/admin/index-config/${index_name}: Received request.`, req.body);
 
-    if (baseline_value === undefined || baseline_value === null || weight_percentage === undefined || weight_percentage === null) {
-        console.log(`PUT /api/admin/index-config/${index_name}: Bad request - missing baseline or weight.`);
-        return res.status(400).json({ error: 'Missing required fields: baseline_value, weight_percentage' });
+    // Валидация входных данных
+    if (baseline_value === undefined || weight_percentage === undefined || current_value === undefined) {
+        console.log(`PUT /api/admin/index-config/${index_name}: Bad request - missing fields.`);
+        return res.status(400).json({ error: 'Missing required fields: baseline_value, weight_percentage, current_value' });
     }
-
-    const numBaseline = parseFloat(baseline_value);
-    const numWeight = parseFloat(weight_percentage);
-    const numCurrent = current_value !== undefined && current_value !== null ? parseFloat(current_value) : null;
-
-    if (isNaN(numBaseline) || numBaseline < 0 || isNaN(numWeight) || numWeight < 0 || numWeight > 100 || (numCurrent !== null && isNaN(numCurrent))) {
-        console.log(`PUT /api/admin/index-config/${index_name}: Bad request - invalid numeric values.`);
-        return res.status(400).json({ error: 'Invalid numeric value for baseline, weight, or current value' });
+    const parsedBaseline = parseFloat(baseline_value);
+    const parsedWeight = parseFloat(weight_percentage);
+    const parsedCurrent = parseFloat(current_value);
+    if (isNaN(parsedBaseline) || parsedBaseline <= 0) {
+        console.log(`PUT /api/admin/index-config/${index_name}: Bad request - invalid baseline.`);
+        return res.status(400).json({ error: 'Invalid baseline_value. Must be a positive number.' });
+    }
+    if (isNaN(parsedWeight) || parsedWeight < 0 || parsedWeight > 100) {
+        console.log(`PUT /api/admin/index-config/${index_name}: Bad request - invalid weight.`);
+        return res.status(400).json({ error: 'Invalid weight_percentage. Must be between 0 and 100.' });
+    }
+    if (isNaN(parsedCurrent)) {
+        console.log(`PUT /api/admin/index-config/${index_name}: Bad request - invalid current value.`);
+        return res.status(400).json({ error: 'Invalid current_value. Must be a number.' });
     }
 
     let client;
@@ -900,43 +917,22 @@ app.put('/api/admin/index-config/:index_name', async (req, res) => {
         console.log(`PUT /api/admin/index-config/${index_name}: Connecting...`);
         client = await pool.connect();
         console.log(`PUT /api/admin/index-config/${index_name}: Updating...`);
+        const result = await client.query(`
+            UPDATE index_config 
+            SET baseline_value = $1, weight_percentage = $2, current_value = $3, last_updated = CURRENT_TIMESTAMP 
+            WHERE index_name = $4 
+            RETURNING *;
+        `, [parsedBaseline, parsedWeight, parsedCurrent, index_name]);
         
-        let updateQuery;
-        let queryParams;
-        
-        // Обновляем current_value только если оно предоставлено
-        if (numCurrent !== null) {
-            updateQuery = `UPDATE index_config 
-                           SET baseline_value = $1, weight_percentage = $2, current_value = $3, last_updated = NOW() 
-                           WHERE index_name = $4 RETURNING *`;
-            queryParams = [numBaseline, numWeight, numCurrent, index_name];
-        } else {
-            // Если current_value не предоставлено, обновляем только baseline и weight
-            updateQuery = `UPDATE index_config 
-                           SET baseline_value = $1, weight_percentage = $2 
-                           WHERE index_name = $3 RETURNING *`;
-            queryParams = [numBaseline, numWeight, index_name];
-        }
-
-        const result = await client.query(updateQuery, queryParams);
-
         if (result.rows.length === 0) {
-            // Если индекса нет, создаем его
-            console.log(`PUT /api/admin/index-config/${index_name}: Index not found, creating...`);
-            const insertResult = await client.query(
-                `INSERT INTO index_config (index_name, baseline_value, weight_percentage, current_value, last_updated)
-                 VALUES ($1, $2, $3, $4, $5) RETURNING *`,
-                [index_name, numBaseline, numWeight, numCurrent, numCurrent !== null ? new Date() : null]
-            );
-            console.log(`PUT /api/admin/index-config/${index_name}: Created successfully.`, insertResult.rows[0]);
-            res.status(201).json(insertResult.rows[0]);
-        } else {
-            console.log(`PUT /api/admin/index-config/${index_name}: Updated successfully.`, result.rows[0]);
-            res.json(result.rows[0]);
+            console.log(`PUT /api/admin/index-config/${index_name}: Index not found.`);
+            return res.status(404).json({ error: 'Index configuration not found' });
         }
+        console.log(`PUT /api/admin/index-config/${index_name}: Updated successfully.`, result.rows[0]);
+        res.json(result.rows[0]);
     } catch (error) {
         console.error(`Error updating index config ${index_name}:`, error);
-        res.status(500).json({ error: 'Failed to update index config' });
+        res.status(500).json({ error: 'Failed to update index configuration' });
     } finally {
         if (client) {
             console.log(`PUT /api/admin/index-config/${index_name}: Releasing client.`);
@@ -969,28 +965,36 @@ app.get('/api/admin/model-settings', async (req, res) => {
 // PUT /api/admin/model-settings/:setting_key - Обновление настройки модели
 app.put('/api/admin/model-settings/:setting_key', async (req, res) => {
     const { setting_key } = req.params;
-    const { setting_value, description } = req.body;
+    const { setting_value } = req.body;
     console.log(`PUT /api/admin/model-settings/${setting_key}: Received request.`, req.body);
-
-    if (setting_value === undefined || setting_value === null) {
+    if (setting_value === undefined) {
         console.log(`PUT /api/admin/model-settings/${setting_key}: Bad request - missing value.`);
         return res.status(400).json({ error: 'Missing required field: setting_value' });
+    }
+    
+    // Дополнительная валидация для sensitivityCoeff
+    if (setting_key === 'sensitivityCoeff') {
+        const parsedValue = parseFloat(setting_value);
+        if (isNaN(parsedValue) || parsedValue < 0 || parsedValue > 1) {
+            console.log(`PUT /api/admin/model-settings/${setting_key}: Bad request - invalid sensitivityCoeff.`);
+            return res.status(400).json({ error: 'Invalid sensitivityCoeff value. Must be between 0 and 1.' });
+        }
     }
 
     let client;
     try {
         console.log(`PUT /api/admin/model-settings/${setting_key}: Connecting...`);
         client = await pool.connect();
-        console.log(`PUT /api/admin/model-settings/${setting_key}: Upserting...`);
+        console.log(`PUT /api/admin/model-settings/${setting_key}: Updating...`);
         const result = await client.query(
-            `INSERT INTO model_settings (setting_key, setting_value, description)
-             VALUES ($1, $2, $3)
-             ON CONFLICT (setting_key)
-             DO UPDATE SET setting_value = EXCLUDED.setting_value, description = EXCLUDED.description
-             RETURNING *`,
-            [setting_key, String(setting_value), description]
+            'UPDATE model_settings SET setting_value = $1 WHERE setting_key = $2 RETURNING *',
+            [setting_value, setting_key]
         );
-        console.log(`PUT /api/admin/model-settings/${setting_key}: Upserted successfully.`, result.rows[0]);
+        if (result.rows.length === 0) {
+            console.log(`PUT /api/admin/model-settings/${setting_key}: Setting not found.`);
+            return res.status(404).json({ error: 'Model setting not found' });
+        }
+        console.log(`PUT /api/admin/model-settings/${setting_key}: Updated successfully.`, result.rows[0]);
         res.json(result.rows[0]);
     } catch (error) {
         console.error(`Error updating model setting ${setting_key}:`, error);
@@ -1000,6 +1004,46 @@ app.put('/api/admin/model-settings/:setting_key', async (req, res) => {
             console.log(`PUT /api/admin/model-settings/${setting_key}: Releasing client.`);
             client.release();
         }
+    }
+});
+
+// GET /api/admin/seasonality - Получение данных сезонности
+app.get('/api/admin/seasonality', async (req, res) => {
+  let client;
+  try {
+    console.log("GET /api/admin/seasonality: Connecting...");
+    client = await pool.connect();
+    console.log("GET /api/admin/seasonality: Fetching factors...");
+    const factorsResult = await client.query('SELECT * FROM seasonality_factors ORDER BY origin_region, destination_region, month');
+    console.log(`GET /api/admin/seasonality: Fetched ${factorsResult.rowCount} factors.`);
+    console.log("GET /api/admin/seasonality: Fetching confidence...");
+    const confidenceResult = await client.query('SELECT * FROM seasonality_confidence ORDER BY origin_region, destination_region');
+    console.log(`GET /api/admin/seasonality: Fetched ${confidenceResult.rowCount} confidence scores.`);
+    res.json({ factors: factorsResult.rows, confidence: confidenceResult.rows });
+  } catch (error) {
+    console.error('Error fetching admin seasonality data:', error);
+    res.status(500).json({ error: 'Failed to fetch seasonality data for admin' });
+  } finally {
+    if (client) {
+        console.log("GET /api/admin/seasonality: Releasing client.");
+        client.release();
+    }
+  }
+});
+
+// POST /api/admin/seasonality/recalculate - Пересчет данных сезонности
+app.post('/api/admin/seasonality/recalculate', async (req, res) => {
+    console.log("POST /api/admin/seasonality/recalculate: Received request.");
+    try {
+        console.log("POST /api/admin/seasonality/recalculate: Calling recalculation function...");
+        // Вызываем функцию пересчета из модуля seasonality_analyzer
+        // Передаем true, чтобы форсировать обновление
+        await initializeAndUpdateSeasonalityData(true); 
+        console.log("POST /api/admin/seasonality/recalculate: Recalculation finished.");
+        res.status(200).json({ message: 'Seasonality data recalculation triggered successfully.' });
+    } catch (error) {
+        console.error('Error triggering seasonality recalculation:', error);
+        res.status(500).json({ error: 'Failed to trigger seasonality recalculation', details: error.message });
     }
 });
 
