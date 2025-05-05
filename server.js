@@ -1,4 +1,4 @@
-// Интеграционный модуль v4.13: Добавлено удаление и пересоздание таблицы ports при инициализации.
+// Интеграционный модуль v4.14: Добавлено удаление и пересоздание таблицы container_types.
 
 import express from 'express';
 import cors from 'cors';
@@ -188,16 +188,18 @@ async function initializeDatabaseTables() {
     console.log("'ports' table recreated successfully.");
     // Дополнительные ALTER TABLE для ports больше не нужны, т.к. таблица создается заново
 
-    // Таблица типов контейнеров (без изменений)
+    // Таблица типов контейнеров (v4.14: Принудительное удаление и пересоздание с UNIQUE(name))
+    console.log("Dropping and recreating 'container_types' table...");
+    await client.query(`DROP TABLE IF EXISTS container_types CASCADE;`); // Удаляем таблицу, если существует
     await client.query(`
-      CREATE TABLE IF NOT EXISTS container_types (
+      CREATE TABLE container_types (
         id SERIAL PRIMARY KEY,
         name VARCHAR(50) UNIQUE NOT NULL, 
         description TEXT
       );
     `);
-    await client.query(`ALTER TABLE container_types ADD COLUMN IF NOT EXISTS description TEXT;`);
-    await client.query(`ALTER TABLE container_types ALTER COLUMN name TYPE VARCHAR(50);`); 
+    console.log("'container_types' table recreated successfully.");
+    // Дополнительные ALTER TABLE для container_types больше не нужны 
 
     // Таблица базовых ставок (без изменений)
     await client.query(`
