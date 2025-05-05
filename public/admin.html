@@ -59,24 +59,21 @@
                 <button class="nav-link" id="base-rates-tab" data-bs-toggle="tab" data-bs-target="#base-rates" type="button" role="tab" aria-controls="base-rates" aria-selected="false">Базовые ставки</button>
             </li>
             <li class="nav-item" role="presentation">
-                <button class="nav-link" id="calculations-tab" data-bs-toggle="tab" data-bs-target="#calculations" type="button" role="tab" aria-controls="calculations" aria-selected="false">История расчетов</button>
+                <button class="nav-link" id="model-settings-tab" data-bs-toggle="tab" data-bs-target="#model-settings" type="button" role="tab" aria-controls="model-settings" aria-selected="false">Настройки модели</button>
             </li>
-            <li class="nav-item" role="presentation">
-                <button class="nav-link" id="settings-tab" data-bs-toggle="tab" data-bs-target="#settings" type="button" role="tab" aria-controls="settings" aria-selected="false">Настройки модели</button>
+             <li class="nav-item" role="presentation">
+                <button class="nav-link" id="history-tab" data-bs-toggle="tab" data-bs-target="#history" type="button" role="tab" aria-controls="history" aria-selected="false">История расчетов</button>
             </li>
         </ul>
 
         <div class="tab-content" id="adminTabsContent">
-            <!-- Область для общих сообщений об ошибках -->
-            <div id="generalErrorDisplay"></div>
-
-            <!-- Порты -->
+            <!-- Ports Tab -->
             <div class="tab-pane fade show active" id="ports" role="tabpanel" aria-labelledby="ports-tab">
                 <h2>Управление портами</h2>
-                <button type="button" class="btn btn-primary mb-3" data-bs-toggle="modal" data-bs-target="#portModal" onclick="prepareAddPortModal()">Добавить порт</button>
-                <div id="portsErrorDisplay"></div>
+                <div id="ports-alert" class="alert" style="display: none;"></div>
+                <button class="btn btn-primary mb-3" onclick="fetchPorts()">Обновить список портов</button>
                 <div class="table-responsive">
-                    <table class="table table-striped table-hover" id="portsTable">
+                    <table class="table table-striped table-bordered">
                         <thead>
                             <tr>
                                 <th>ID</th>
@@ -89,90 +86,188 @@
                                 <th>Действия</th>
                             </tr>
                         </thead>
-                        <tbody>
-                            <!-- Данные будут загружены через JavaScript -->
+                        <tbody id="ports-table-body">
+                            <!-- Data will be loaded here -->
                         </tbody>
                     </table>
                 </div>
+                <!-- Add/Edit Port Form (Modal) -->
+                <div class="modal fade" id="portModal" tabindex="-1" aria-labelledby="portModalLabel" aria-hidden="true">
+                    <div class="modal-dialog">
+                        <div class="modal-content">
+                            <div class="modal-header">
+                                <h5 class="modal-title" id="portModalLabel">Добавить/Редактировать порт</h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                            </div>
+                            <div class="modal-body">
+                                <form id="portForm">
+                                    <input type="hidden" id="portId">
+                                    <div class="mb-3">
+                                        <label for="portName" class="form-label">Название</label>
+                                        <input type="text" class="form-control" id="portName" required>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label for="portCode" class="form-label">Код</label>
+                                        <input type="text" class="form-control" id="portCode">
+                                    </div>
+                                    <div class="mb-3">
+                                        <label for="portRegion" class="form-label">Регион</label>
+                                        <input type="text" class="form-control" id="portRegion">
+                                    </div>
+                                    <div class="mb-3">
+                                        <label for="portCountry" class="form-label">Страна</label>
+                                        <input type="text" class="form-control" id="portCountry">
+                                    </div>
+                                    <div class="mb-3">
+                                        <label for="portLatitude" class="form-label">Широта</label>
+                                        <input type="number" step="any" class="form-control" id="portLatitude">
+                                    </div>
+                                    <div class="mb-3">
+                                        <label for="portLongitude" class="form-label">Долгота</label>
+                                        <input type="number" step="any" class="form-control" id="portLongitude">
+                                    </div>
+                                </form>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Закрыть</button>
+                                <button type="button" class="btn btn-primary" onclick="savePort()">Сохранить</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#portModal" onclick="prepareAddPort()">Добавить порт</button>
             </div>
 
-            <!-- Типы контейнеров -->
+            <!-- Container Types Tab -->
             <div class="tab-pane fade" id="container-types" role="tabpanel" aria-labelledby="container-types-tab">
                 <h2>Управление типами контейнеров</h2>
-                <button type="button" class="btn btn-primary mb-3" data-bs-toggle="modal" data-bs-target="#containerTypeModal" onclick="prepareAddContainerTypeModal()">Добавить тип контейнера</button>
-                <div id="containerTypesErrorDisplay"></div>
+                <div id="ct-alert" class="alert" style="display: none;"></div>
+                <button class="btn btn-primary mb-3" onclick="fetchContainerTypes()">Обновить список</button>
                 <div class="table-responsive">
-                    <table class="table table-striped table-hover" id="containerTypesTable">
+                    <table class="table table-striped table-bordered">
                         <thead>
                             <tr>
                                 <th>ID</th>
-                                <th>Название</th>
+                                <th>Название (Код)</th>
                                 <th>Описание</th>
                                 <th>Действия</th>
                             </tr>
                         </thead>
-                        <tbody>
-                            <!-- Данные будут загружены через JavaScript -->
+                        <tbody id="ct-table-body">
+                            <!-- Data will be loaded here -->
                         </tbody>
                     </table>
                 </div>
+                 <!-- Add/Edit Container Type Form (Modal) -->
+                <div class="modal fade" id="ctModal" tabindex="-1" aria-labelledby="ctModalLabel" aria-hidden="true">
+                    <div class="modal-dialog">
+                        <div class="modal-content">
+                            <div class="modal-header">
+                                <h5 class="modal-title" id="ctModalLabel">Добавить/Редактировать тип контейнера</h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                            </div>
+                            <div class="modal-body">
+                                <form id="ctForm">
+                                    <input type="hidden" id="ctId">
+                                    <div class="mb-3">
+                                        <label for="ctName" class="form-label">Название (Код)</label>
+                                        <input type="text" class="form-control" id="ctName" required>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label for="ctDescription" class="form-label">Описание</label>
+                                        <textarea class="form-control" id="ctDescription"></textarea>
+                                    </div>
+                                </form>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Закрыть</button>
+                                <button type="button" class="btn btn-primary" onclick="saveContainerType()">Сохранить</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#ctModal" onclick="prepareAddContainerType()">Добавить тип</button>
             </div>
 
-            <!-- Индексы -->
+            <!-- Indices Tab -->
             <div class="tab-pane fade" id="indices" role="tabpanel" aria-labelledby="indices-tab">
-                <h2>Индексы фрахтовых ставок</h2>
-                <div class="form-section mb-3">
-                    <h4>Загрузить индексы из Excel</h4>
-                    <form id="uploadIndicesForm" enctype="multipart/form-data">
-                        <div class="mb-3">
-                            <label for="indicesFile" class="form-label">Выберите Excel файл (.xlsx)</label>
-                            <input class="form-control" type="file" id="indicesFile" name="indicesFile" accept=".xlsx" required>
-                        </div>
-                        <button type="submit" class="btn btn-success">Загрузить файл индексов</button>
-                    </form>
-                    <div id="indicesUploadStatus" class="mt-2"></div>
-                </div>
-                <button type="button" class="btn btn-primary mb-3" data-bs-toggle="modal" data-bs-target="#indexModal" onclick="prepareAddIndexModal()">Добавить индекс</button>
-                <button type="button" class="btn btn-secondary mb-3" onclick="loadIndices()">Обновить таблицу индексов</button>
-                <div id="indicesErrorDisplay"></div>
+                <h2>Управление индексами</h2>
+                <div id="indices-alert" class="alert" style="display: none;"></div>
+                <button class="btn btn-primary mb-3" onclick="fetchIndices()">Обновить список</button>
                 <div class="table-responsive">
-                    <table class="table table-striped table-hover" id="indicesTable">
+                    <table class="table table-striped table-bordered">
                         <thead>
                             <tr>
-                                <th>Индекс</th>
-                                <th>Текущее значение</th>
+                                <th>Название индекса</th>
                                 <th>Базовое значение</th>
                                 <th>Вес (%)</th>
-                                <th>Дата обновления</th>
+                                <th>Текущее значение</th>
+                                <th>Последнее обновление</th>
                                 <th>Действия</th>
                             </tr>
                         </thead>
-                        <tbody>
-                            <!-- Данные будут загружены через JavaScript -->
+                        <tbody id="indices-table-body">
+                            <!-- Data will be loaded here -->
                         </tbody>
                     </table>
                 </div>
+                <!-- Edit Index Form (Modal) -->
+                <div class="modal fade" id="indexModal" tabindex="-1" aria-labelledby="indexModalLabel" aria-hidden="true">
+                     <div class="modal-dialog">
+                        <div class="modal-content">
+                            <div class="modal-header">
+                                <h5 class="modal-title" id="indexModalLabel">Редактировать Индекс</h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                            </div>
+                            <div class="modal-body">
+                                <form id="indexForm">
+                                    <input type="hidden" id="indexNameHidden">
+                                    <div class="mb-3">
+                                        <label class="form-label">Название индекса</label>
+                                        <p id="indexNameDisplay"></p> 
+                                    </div>
+                                    <div class="mb-3">
+                                        <label for="indexBaseline" class="form-label">Базовое значение</label>
+                                        <input type="number" step="any" class="form-control" id="indexBaseline" required>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label for="indexWeight" class="form-label">Вес (%)</label>
+                                        <input type="number" step="any" class="form-control" id="indexWeight" required min="0" max="100">
+                                    </div>
+                                    <div class="mb-3">
+                                        <label for="indexCurrent" class="form-label">Текущее значение</label>
+                                        <input type="number" step="any" class="form-control" id="indexCurrent">
+                                    </div>
+                                </form>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Закрыть</button>
+                                <button type="button" class="btn btn-primary" onclick="saveIndex()">Сохранить</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <!-- Upload Index File -->
+                <div class="form-section">
+                    <h4>Загрузить файл индексов (.xlsx)</h4>
+                    <form id="uploadIndexForm">
+                        <div class="mb-3">
+                            <input class="form-control" type="file" id="indexFile" accept=".xlsx" required>
+                        </div>
+                        <button type="submit" class="btn btn-info">Загрузить и обновить индексы</button>
+                        <div id="uploadIndexError" class="error-message"></div>
+                        <div id="uploadIndexSuccess" class="alert alert-success" style="display: none;"></div>
+                    </form>
+                </div>
             </div>
 
-            <!-- Базовые ставки -->
+            <!-- Base Rates Tab -->
             <div class="tab-pane fade" id="base-rates" role="tabpanel" aria-labelledby="base-rates-tab">
-                <h2>Базовые ставки</h2>
-                <div class="form-section mb-3">
-                    <h4>Загрузить базовые ставки из Excel</h4>
-                    <form id="uploadBaseRatesForm" enctype="multipart/form-data">
-                        <div class="mb-3">
-                            <label for="baseRatesFile" class="form-label">Выберите Excel файл (.xlsx)</label>
-                            <input class="form-control" type="file" id="baseRatesFile" name="baseRatesFile" accept=".xlsx" required>
-                        </div>
-                        <button type="submit" class="btn btn-success">Загрузить файл ставок</button>
-                    </form>
-                    <div id="baseRatesUploadStatus" class="mt-2"></div>
-                </div>
-                <button type="button" class="btn btn-primary mb-3" data-bs-toggle="modal" data-bs-target="#baseRateModal" onclick="prepareAddBaseRateModal()">Добавить ставку</button>
-                <button type="button" class="btn btn-secondary mb-3" onclick="loadBaseRates()">Обновить таблицу ставок</button>
-                <div id="baseRatesErrorDisplay"></div>
+                <h2>Управление базовыми ставками</h2>
+                <div id="rates-alert" class="alert" style="display: none;"></div>
+                <button class="btn btn-primary mb-3" onclick="fetchBaseRates()">Обновить список</button>
                 <div class="table-responsive">
-                    <table class="table table-striped table-hover" id="baseRatesTable">
+                    <table class="table table-striped table-bordered">
                         <thead>
                             <tr>
                                 <th>ID</th>
@@ -183,554 +278,683 @@
                                 <th>Действия</th>
                             </tr>
                         </thead>
-                        <tbody>
-                            <!-- Данные будут загружены через JavaScript -->
+                        <tbody id="rates-table-body">
+                            <!-- Data will be loaded here -->
                         </tbody>
                     </table>
                 </div>
+                 <!-- Add/Edit Base Rate Form (Modal) -->
+                <div class="modal fade" id="rateModal" tabindex="-1" aria-labelledby="rateModalLabel" aria-hidden="true">
+                    <div class="modal-dialog">
+                        <div class="modal-content">
+                            <div class="modal-header">
+                                <h5 class="modal-title" id="rateModalLabel">Добавить/Редактировать базовую ставку</h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                            </div>
+                            <div class="modal-body">
+                                <form id="rateForm">
+                                    <input type="hidden" id="rateId">
+                                    <div class="mb-3">
+                                        <label for="rateOriginRegion" class="form-label">Регион отправления</label>
+                                        <input type="text" class="form-control" id="rateOriginRegion" required>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label for="rateDestinationRegion" class="form-label">Регион назначения</label>
+                                        <input type="text" class="form-control" id="rateDestinationRegion" required>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label for="rateContainerType" class="form-label">Тип контейнера</label>
+                                        <select class="form-select" id="rateContainerType" required>
+                                            <!-- Options loaded dynamically -->
+                                        </select>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label for="rateValue" class="form-label">Ставка</label>
+                                        <input type="number" step="any" class="form-control" id="rateValue" required>
+                                    </div>
+                                </form>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Закрыть</button>
+                                <button type="button" class="btn btn-primary" onclick="saveBaseRate()">Сохранить</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <button class="btn btn-success mb-3" data-bs-toggle="modal" data-bs-target="#rateModal" onclick="prepareAddBaseRate()">Добавить ставку</button>
+
+                <!-- Upload Base Rates File -->
+                <div class="form-section">
+                    <h4>Загрузить файл базовых ставок (.xlsx)</h4>
+                    <form id="uploadRatesForm">
+                        <div class="mb-3">
+                            <input class="form-control" type="file" id="ratesFile" accept=".xlsx" required>
+                        </div>
+                        <button type="submit" class="btn btn-info">Загрузить и обновить ставки</button>
+                        <div id="uploadRatesError" class="error-message"></div>
+                        <div id="uploadRatesSuccess" class="alert alert-success" style="display: none;"></div>
+                    </form>
+                </div>
             </div>
 
-            <!-- История расчетов -->
-            <div class="tab-pane fade" id="calculations" role="tabpanel" aria-labelledby="calculations-tab">
+            <!-- Model Settings Tab -->
+            <div class="tab-pane fade" id="model-settings" role="tabpanel" aria-labelledby="model-settings-tab">
+                <h2>Настройки модели расчета</h2>
+                <div id="settings-alert" class="alert" style="display: none;"></div>
+                <button class="btn btn-primary mb-3" onclick="fetchModelSettings()">Загрузить текущие настройки</button>
+                <form id="modelSettingsForm">
+                    <!-- Settings will be loaded here -->
+                </form>
+                <button type="button" class="btn btn-success mt-3" onclick="saveModelSettings()">Сохранить настройки</button>
+            </div>
+
+             <!-- History Tab -->
+            <div class="tab-pane fade" id="history" role="tabpanel" aria-labelledby="history-tab">
                 <h2>История расчетов</h2>
-                <button type="button" class="btn btn-secondary mb-3" onclick="loadCalculationHistory()">Обновить историю</button>
-                <div id="calculationsErrorDisplay"></div>
+                <div id="history-alert" class="alert" style="display: none;"></div>
+                <button class="btn btn-primary mb-3" onclick="fetchHistory()">Обновить историю</button>
                 <div class="table-responsive">
-                    <table class="table table-striped table-hover" id="calculationHistoryTable">
+                    <table class="table table-striped table-bordered">
                         <thead>
                             <tr>
                                 <th>ID</th>
                                 <th>Время</th>
-                                <th>Порт отпр. (Код)</th>
-                                <th>Порт назн. (Код)</th>
+                                <th>Email</th>
+                                <th>Откуда (Код)</th>
+                                <th>Куда (Код)</th>
                                 <th>Тип конт.</th>
                                 <th>Вес</th>
-                                <th>Расч. ставка</th>
-                                <th>Email</th>
-                                <th>Исп. индексы</th>
+                                <th>Ставка</th>
+                                <th>Индексы (JSON)</th>
                             </tr>
                         </thead>
-                        <tbody>
-                            <!-- Данные будут загружены через JavaScript -->
+                        <tbody id="history-table-body">
+                            <!-- Data will be loaded here -->
                         </tbody>
                     </table>
                 </div>
             </div>
-
-            <!-- Настройки модели -->
-            <div class="tab-pane fade" id="settings" role="tabpanel" aria-labelledby="settings-tab">
-                <h2>Настройки модели расчета</h2>
-                <div id="settingsErrorDisplay"></div>
-                <div id="settingsForm">
-                    <!-- Настройки будут загружены через JavaScript -->
-                </div>
-                <button type="button" class="btn btn-primary mt-3" onclick="saveSettings()">Сохранить настройки</button>
-                <div id="settingsStatus" class="mt-2"></div>
-            </div>
-
-        </div> <!-- /tab-content -->
-
-        <!-- Модальное окно для Портов -->
-        <div class="modal fade" id="portModal" tabindex="-1" aria-labelledby="portModalLabel" aria-hidden="true">
-            <div class="modal-dialog">
-                <div class="modal-content">
-                    <div class="modal-header">
-                        <h5 class="modal-title" id="portModalLabel">Добавить/Редактировать Порт</h5>
-                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                    </div>
-                    <div class="modal-body">
-                        <form id="portForm">
-                            <input type="hidden" id="portId">
-                            <div class="mb-3">
-                                <label for="portName" class="form-label">Название</label>
-                                <input type="text" class="form-control" id="portName" required>
-                            </div>
-                            <div class="mb-3">
-                                <label for="portCode" class="form-label">Код (необязательно, но уникально)</label>
-                                <input type="text" class="form-control" id="portCode">
-                            </div>
-                            <div class="mb-3">
-                                <label for="portRegion" class="form-label">Регион</label>
-                                <input type="text" class="form-control" id="portRegion">
-                            </div>
-                            <div class="mb-3">
-                                <label for="portCountry" class="form-label">Страна</label>
-                                <input type="text" class="form-control" id="portCountry">
-                            </div>
-                            <div class="mb-3">
-                                <label for="portLatitude" class="form-label">Широта</label>
-                                <input type="number" step="any" class="form-control" id="portLatitude">
-                            </div>
-                            <div class="mb-3">
-                                <label for="portLongitude" class="form-label">Долгота</label>
-                                <input type="number" step="any" class="form-control" id="portLongitude">
-                            </div>
-                        </form>
-                        <div id="portModalError" class="error-message"></div>
-                    </div>
-                    <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Закрыть</button>
-                        <button type="button" class="btn btn-primary" onclick="savePort()">Сохранить</button>
-                    </div>
-                </div>
-            </div>
         </div>
-
-        <!-- Модальное окно для Типов Контейнеров -->
-        <div class="modal fade" id="containerTypeModal" tabindex="-1" aria-labelledby="containerTypeModalLabel" aria-hidden="true">
-            <div class="modal-dialog">
-                <div class="modal-content">
-                    <div class="modal-header">
-                        <h5 class="modal-title" id="containerTypeModalLabel">Добавить/Редактировать Тип Контейнера</h5>
-                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                    </div>
-                    <div class="modal-body">
-                        <form id="containerTypeForm">
-                            <input type="hidden" id="containerTypeId">
-                            <div class="mb-3">
-                                <label for="containerTypeName" class="form-label">Название (например, 20GP, 40HC)</label>
-                                <input type="text" class="form-control" id="containerTypeName" required>
-                            </div>
-                            <div class="mb-3">
-                                <label for="containerTypeDescription" class="form-label">Описание</label>
-                                <textarea class="form-control" id="containerTypeDescription" rows="3"></textarea>
-                            </div>
-                        </form>
-                        <div id="containerTypeModalError" class="error-message"></div>
-                    </div>
-                    <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Закрыть</button>
-                        <button type="button" class="btn btn-primary" onclick="saveContainerType()">Сохранить</button>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Модальное окно для Индексов -->
-        <div class="modal fade" id="indexModal" tabindex="-1" aria-labelledby="indexModalLabel" aria-hidden="true">
-             <div class="modal-dialog">
-                <div class="modal-content">
-                    <div class="modal-header">
-                        <h5 class="modal-title" id="indexModalLabel">Добавить/Редактировать Индекс</h5>
-                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                    </div>
-                    <div class="modal-body">
-                        <form id="indexForm">
-                            <input type="hidden" id="indexNameOriginal"> <!-- Для PUT запроса -->
-                            <div class="mb-3">
-                                <label for="indexName" class="form-label">Название индекса</label>
-                                <input type="text" class="form-control" id="indexName" required>
-                            </div>
-                            <div class="mb-3">
-                                <label for="indexCurrentValue" class="form-label">Текущее значение</label>
-                                <input type="number" step="any" class="form-control" id="indexCurrentValue" required>
-                            </div>
-                            <div class="mb-3">
-                                <label for="indexBaselineValue" class="form-label">Базовое значение</label>
-                                <input type="number" step="any" class="form-control" id="indexBaselineValue" required>
-                            </div>
-                            <div class="mb-3">
-                                <label for="indexWeightPercentage" class="form-label">Вес (%)</label>
-                                <input type="number" step="any" class="form-control" id="indexWeightPercentage" required min="0" max="100">
-                            </div>
-                        </form>
-                        <div id="indexModalError" class="error-message"></div>
-                    </div>
-                    <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Закрыть</button>
-                        <button type="button" class="btn btn-primary" onclick="saveIndex()">Сохранить</button>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Модальное окно для Базовых Ставок -->
-         <div class="modal fade" id="baseRateModal" tabindex="-1" aria-labelledby="baseRateModalLabel" aria-hidden="true">
-             <div class="modal-dialog">
-                <div class="modal-content">
-                    <div class="modal-header">
-                        <h5 class="modal-title" id="baseRateModalLabel">Добавить/Редактировать Базовую Ставку</h5>
-                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                    </div>
-                    <div class="modal-body">
-                        <form id="baseRateForm">
-                            <input type="hidden" id="baseRateId">
-                            <div class="mb-3">
-                                <label for="baseRateOriginRegion" class="form-label">Регион отправления</label>
-                                <input type="text" class="form-control" id="baseRateOriginRegion" required>
-                            </div>
-                            <div class="mb-3">
-                                <label for="baseRateDestinationRegion" class="form-label">Регион назначения</label>
-                                <input type="text" class="form-control" id="baseRateDestinationRegion" required>
-                            </div>
-                            <div class="mb-3">
-                                <label for="baseRateContainerType" class="form-label">Тип контейнера</label>
-                                <select class="form-select" id="baseRateContainerType" required>
-                                    <!-- Опции будут загружены -->
-                                </select>
-                            </div>
-                            <div class="mb-3">
-                                <label for="baseRateRate" class="form-label">Ставка</label>
-                                <input type="number" step="any" class="form-control" id="baseRateRate" required>
-                            </div>
-                        </form>
-                        <div id="baseRateModalError" class="error-message"></div>
-                    </div>
-                    <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Закрыть</button>
-                        <button type="button" class="btn btn-primary" onclick="saveBaseRate()">Сохранить</button>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-
-    </div> <!-- /container -->
+    </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/js/bootstrap.bundle.min.js"></script>
     <script>
-        const API_BASE_URL = "."; // Используем относительный путь к API
-        let portModalInstance, containerTypeModalInstance, indexModalInstance, baseRateModalInstance;
+        const API_BASE_URL = "."; // Adjust if your API is hosted elsewhere
 
-        document.addEventListener("DOMContentLoaded", function () {
-            portModalInstance = new bootstrap.Modal(document.getElementById("portModal"));
-            containerTypeModalInstance = new bootstrap.Modal(document.getElementById("containerTypeModal"));
-            indexModalInstance = new bootstrap.Modal(document.getElementById("indexModal"));
-            baseRateModalInstance = new bootstrap.Modal(document.getElementById("baseRateModal"));
+        // --- Utility Functions ---
+        function showAlert(elementId, message, type = 'danger') {
+            const alertDiv = document.getElementById(elementId);
+            alertDiv.className = `alert alert-${type}`;
+            alertDiv.textContent = message;
+            alertDiv.style.display = 'block';
+            setTimeout(() => { alertDiv.style.display = 'none'; }, 5000);
+        }
 
-            loadPorts();
-            loadContainerTypes();
-            loadIndices();
-            loadBaseRates();
-            loadCalculationHistory();
-            loadSettings();
-            loadContainerTypesForDropdown(); // Загрузка типов для модального окна ставок
+        function hideAlert(elementId) {
+             document.getElementById(elementId).style.display = 'none';
+        }
 
-            // Обработчики для форм загрузки Excel
-            document.getElementById("uploadIndicesForm").addEventListener("submit", uploadIndicesFile);
-            document.getElementById("uploadBaseRatesForm").addEventListener("submit", uploadBaseRatesFile);
+        function formatDate(dateString) {
+            if (!dateString) return '';
+            const options = { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' };
+            return new Date(dateString).toLocaleDateString('ru-RU', options);
+        }
 
-            // Обновление данных при переключении вкладок
-            const adminTabs = document.querySelectorAll("#adminTabs button[data-bs-toggle=\"tab\"]");
-            adminTabs.forEach(tab => {
-                tab.addEventListener("shown.bs.tab", event => {
-                    const targetId = event.target.getAttribute("data-bs-target");
-                    clearAllErrors(); // Очищаем ошибки при смене вкладки
-                    if (targetId === "#ports") loadPorts();
-                    else if (targetId === "#container-types") loadContainerTypes();
-                    else if (targetId === "#indices") loadIndices();
-                    else if (targetId === "#base-rates") loadBaseRates();
-                    else if (targetId === "#calculations") loadCalculationHistory();
-                    else if (targetId === "#settings") loadSettings();
-                });
-            });
-        });
-
-        // --- Общие функции --- 
-        async function fetchData(url, options = {}) {
+        // --- API Fetch Functions ---
+        async function fetchData(endpoint) {
             try {
-                const response = await fetch(url, options);
+                const response = await fetch(`${API_BASE_URL}/api/${endpoint}`);
                 if (!response.ok) {
-                    let errorData;
-                    try {
-                        errorData = await response.json();
-                    } catch (e) {
-                        errorData = { error: await response.text() || response.statusText };
-                    }
-                    console.error(`HTTP error! status: ${response.status}`, errorData);
-                    // Формируем более детальное сообщение об ошибке
-                    let errorMessage = `HTTP ${response.status}: ${errorData.error || "Unknown error"}`;
-                    if (errorData.detail) {
-                        errorMessage += ` (${errorData.detail})`;
-                    }
-                    throw new Error(errorMessage);
-                }
-                // Обработка случая, когда ответ пустой (например, при DELETE с кодом 204)
-                if (response.status === 204 || response.headers.get("content-length") === "0") {
-                    return { success: true }; // Возвращаем индикатор успеха
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
                 }
                 return await response.json();
             } catch (error) {
-                console.error("Fetch error:", error);
-                throw error; // Перебрасываем ошибку дальше
+                console.error(`Error fetching ${endpoint}:`, error);
+                throw error;
             }
         }
 
-        function displayError(elementId, error) {
-            const element = document.getElementById(elementId);
-            if (element) {
-                element.innerHTML = `<div class="alert alert-danger alert-dismissible fade show" role="alert">
-                                    Ошибка: ${error.message || error}
-                                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-                                 </div>`;
-            }
-        }
-
-        function displaySuccess(elementId, message) {
-             const element = document.getElementById(elementId);
-            if (element) {
-                element.innerHTML = `<div class="alert alert-success alert-dismissible fade show" role="alert">
-                                    ${message}
-                                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-                                 </div>`;
-                // Убрал авто-скрытие, т.к. есть кнопка закрытия
-            }
-        }
-
-        function displayModalError(modalErrorElementId, error) {
-            const element = document.getElementById(modalErrorElementId);
-            if (element) {
-                element.textContent = `Ошибка: ${error.message || error}`;
-            }
-        }
-
-        function clearModalError(modalErrorElementId) {
-             const element = document.getElementById(modalErrorElementId);
-            if (element) {
-                element.textContent = "";
-            }
-        }
-
-        function clearAllErrors() {
-            const errorDisplays = ["generalErrorDisplay", "portsErrorDisplay", "containerTypesErrorDisplay", "indicesErrorDisplay", "baseRatesErrorDisplay", "calculationsErrorDisplay", "settingsErrorDisplay", "settingsStatus", "indicesUploadStatus", "baseRatesUploadStatus"];
-            errorDisplays.forEach(id => {
-                const element = document.getElementById(id);
-                if (element) element.innerHTML = "";
-            });
-            const modalErrorDisplays = ["portModalError", "containerTypeModalError", "indexModalError", "baseRateModalError"];
-             modalErrorDisplays.forEach(id => {
-                const element = document.getElementById(id);
-                if (element) element.textContent = "";
-            });
-        }
-
-        function sanitizeHTML(str) {
-            if (str === null || str === undefined) return "";
-            const temp = document.createElement("div");
-            temp.textContent = str;
-            return temp.innerHTML;
-        }
-
-        // --- Порты --- 
-        async function loadPorts() {
+        async function postData(endpoint, data) {
             try {
-                const ports = await fetchData(`${API_BASE_URL}/api/admin/ports`);
-                const tableBody = document.getElementById("portsTable").querySelector("tbody");
-                tableBody.innerHTML = ""; // Очистка таблицы
+                const response = await fetch(`${API_BASE_URL}/api/${endpoint}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(data),
+                });
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+                }
+                return await response.json();
+            } catch (error) {
+                console.error(`Error posting to ${endpoint}:`, error);
+                throw error;
+            }
+        }
+
+        async function putData(endpoint, data) {
+             try {
+                const response = await fetch(`${API_BASE_URL}/api/${endpoint}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(data),
+                });
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+                }
+                return await response.json();
+            } catch (error) {
+                console.error(`Error putting to ${endpoint}:`, error);
+                throw error;
+            }
+        }
+
+        async function deleteData(endpoint) {
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/${endpoint}`, {
+                    method: 'DELETE',
+                });
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+                }
+                return await response.json();
+            } catch (error) {
+                console.error(`Error deleting from ${endpoint}:`, error);
+                throw error;
+            }
+        }
+
+        // --- Ports --- 
+        async function fetchPorts() {
+            try {
+                const ports = await fetchData("admin/ports");
+                const tableBody = document.getElementById('ports-table-body');
+                tableBody.innerHTML = ''; // Clear existing data
                 ports.forEach(port => {
                     const row = tableBody.insertRow();
                     row.innerHTML = `
-                        <td>${sanitizeHTML(port.id)}</td>
-                        <td>${sanitizeHTML(port.name)}</td>
-                        <td>${sanitizeHTML(port.code) || "-"}</td>
-                        <td>${sanitizeHTML(port.region) || "-"}</td>
-                        <td>${sanitizeHTML(port.country) || "-"}</td>
-                        <td>${sanitizeHTML(port.latitude) || "-"}</td>
-                        <td>${sanitizeHTML(port.longitude) || "-"}</td>
+                        <td>${port.id}</td>
+                        <td>${port.name || ''}</td>
+                        <td>${port.code || ''}</td>
+                        <td>${port.region || ''}</td>
+                        <td>${port.country || ''}</td>
+                        <td>${port.latitude || ''}</td>
+                        <td>${port.longitude || ''}</td>
                         <td>
-                            <button class="btn btn-sm btn-warning" onclick="editPort(${port.id})">Ред.</button>
-                            <button class="btn btn-sm btn-danger" onclick="deletePort(${port.id})">Удал.</button>
+                            <button class="btn btn-sm btn-warning" onclick='editPort(${JSON.stringify(port)})'>Edit</button>
+                            <button class="btn btn-sm btn-danger" onclick="deletePort(${port.id})">Delete</button>
                         </td>
                     `;
                 });
+                hideAlert('ports-alert');
             } catch (error) {
-                displayError("portsErrorDisplay", error);
+                showAlert('ports-alert', `Ошибка загрузки портов: ${error.message}`);
             }
         }
 
-        function prepareAddPortModal() {
-            document.getElementById("portForm").reset();
-            document.getElementById("portId").value = "";
-            document.getElementById("portModalLabel").textContent = "Добавить Порт";
-            clearModalError("portModalError");
-            // portModalInstance.show(); // Не нужно, т.к. data-bs-toggle="modal" уже есть
+        function prepareAddPort() {
+            document.getElementById('portForm').reset();
+            document.getElementById('portId').value = '';
+            document.getElementById('portModalLabel').textContent = 'Добавить порт';
         }
 
-        async function editPort(id) {
-            clearModalError("portModalError");
-            try {
-                const port = await fetchData(`${API_BASE_URL}/api/admin/ports/${id}`);
-                document.getElementById("portId").value = port.id;
-                document.getElementById("portName").value = port.name;
-                document.getElementById("portCode").value = port.code || "";
-                document.getElementById("portRegion").value = port.region || "";
-                document.getElementById("portCountry").value = port.country || "";
-                document.getElementById("portLatitude").value = port.latitude || "";
-                document.getElementById("portLongitude").value = port.longitude || "";
-                document.getElementById("portModalLabel").textContent = "Редактировать Порт";
-                portModalInstance.show();
-            } catch (error) {
-                displayError("portsErrorDisplay", `Ошибка при загрузке данных порта для редактирования: ${error.message}`);
-            }
+        function editPort(port) {
+            document.getElementById('portId').value = port.id;
+            document.getElementById('portName').value = port.name || '';
+            document.getElementById('portCode').value = port.code || '';
+            document.getElementById('portRegion').value = port.region || '';
+            document.getElementById('portCountry').value = port.country || '';
+            document.getElementById('portLatitude').value = port.latitude || '';
+            document.getElementById('portLongitude').value = port.longitude || '';
+            document.getElementById('portModalLabel').textContent = 'Редактировать порт';
+            new bootstrap.Modal(document.getElementById('portModal')).show();
         }
 
         async function savePort() {
-            clearModalError("portModalError");
-            const portId = document.getElementById("portId").value;
-            const portData = {
-                name: document.getElementById("portName").value,
-                code: document.getElementById("portCode").value || null, // Отправляем null если пусто
-                region: document.getElementById("portRegion").value || null,
-                country: document.getElementById("portCountry").value || null,
-                latitude: document.getElementById("portLatitude").value || null,
-                longitude: document.getElementById("portLongitude").value || null,
+            const id = document.getElementById('portId').value;
+            const data = {
+                name: document.getElementById('portName').value,
+                code: document.getElementById('portCode').value,
+                region: document.getElementById('portRegion').value,
+                country: document.getElementById('portCountry').value,
+                latitude: document.getElementById('portLatitude').value ? parseFloat(document.getElementById('portLatitude').value) : null,
+                longitude: document.getElementById('portLongitude').value ? parseFloat(document.getElementById('portLongitude').value) : null,
             };
 
-            // Простая валидация на клиенте
-            if (!portData.name) {
-                displayModalError("portModalError", "Название порта обязательно.");
-                return;
-            }
-
-            const url = portId ? `${API_BASE_URL}/api/admin/ports/${portId}` : `${API_BASE_URL}/api/admin/ports`;
-            const method = portId ? "PUT" : "POST";
-
             try {
-                await fetchData(url, {
-                    method: method,
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify(portData)
-                });
-                portModalInstance.hide();
-                loadPorts(); // Обновить таблицу
+                if (id) {
+                    await putData(`admin/ports/${id}`, data);
+                    showAlert('ports-alert', 'Порт успешно обновлен.', 'success');
+                } else {
+                    await postData("admin/ports", data);
+                    showAlert('ports-alert', 'Порт успешно добавлен.', 'success');
+                }
+                bootstrap.Modal.getInstance(document.getElementById('portModal')).hide();
+                fetchPorts(); // Refresh the list
             } catch (error) {
-                displayModalError("portModalError", error);
+                 showAlert('ports-alert', `Ошибка сохранения порта: ${error.message}`);
             }
         }
 
         async function deletePort(id) {
-            if (!confirm(`Вы уверены, что хотите удалить порт с ID ${id}?`)) return;
-            try {
-                await fetchData(`${API_BASE_URL}/api/admin/ports/${id}`, { method: "DELETE" });
-                loadPorts(); // Обновить таблицу
-            } catch (error) {
-                displayError("portsErrorDisplay", `Ошибка при удалении порта: ${error.message}`);
+            if (confirm('Вы уверены, что хотите удалить этот порт?')) {
+                try {
+                    await deleteData(`admin/ports/${id}`);
+                    showAlert('ports-alert', 'Порт успешно удален.', 'success');
+                    fetchPorts(); // Refresh the list
+                } catch (error) {
+                    showAlert('ports-alert', `Ошибка удаления порта: ${error.message}`);
+                }
             }
         }
 
-        // --- Типы контейнеров --- 
-        async function loadContainerTypes() {
+        // --- Container Types --- 
+        async function fetchContainerTypes() {
             try {
-                const types = await fetchData(`${API_BASE_URL}/api/admin/container-types`);
-                const tableBody = document.getElementById("containerTypesTable").querySelector("tbody");
-                tableBody.innerHTML = "";
-                types.forEach(type => {
+                const containerTypes = await fetchData("admin/container-types");
+                const tableBody = document.getElementById('ct-table-body');
+                tableBody.innerHTML = ''; // Clear existing data
+                containerTypes.forEach(ct => {
                     const row = tableBody.insertRow();
                     row.innerHTML = `
-                        <td>${sanitizeHTML(type.id)}</td>
-                        <td>${sanitizeHTML(type.name)}</td>
-                        <td>${sanitizeHTML(type.description) || "-"}</td>
+                        <td>${ct.id}</td>
+                        <td>${ct.name || ''}</td>
+                        <td>${ct.description || ''}</td>
                         <td>
-                            <button class="btn btn-sm btn-warning" onclick="editContainerType(${type.id})">Ред.</button>
-                            <button class="btn btn-sm btn-danger" onclick="deleteContainerType(${type.id})">Удал.</button>
+                            <button class="btn btn-sm btn-warning" onclick='editContainerType(${JSON.stringify(ct)})'>Edit</button>
+                            <button class="btn btn-sm btn-danger" onclick="deleteContainerType(${ct.id})">Delete</button>
                         </td>
                     `;
                 });
+                // Populate dropdown for base rates
+                populateContainerTypeDropdown(containerTypes);
+                hideAlert('ct-alert');
             } catch (error) {
-                 displayError("containerTypesErrorDisplay", error);
+                showAlert('ct-alert', `Ошибка загрузки типов контейнеров: ${error.message}`);
             }
         }
-
-        function prepareAddContainerTypeModal() {
-            document.getElementById("containerTypeForm").reset();
-            document.getElementById("containerTypeId").value = "";
-            document.getElementById("containerTypeModalLabel").textContent = "Добавить Тип Контейнера";
-            clearModalError("containerTypeModalError");
+        
+        function prepareAddContainerType() {
+            document.getElementById('ctForm').reset();
+            document.getElementById('ctId').value = '';
+            document.getElementById('ctModalLabel').textContent = 'Добавить тип контейнера';
         }
 
-        async function editContainerType(id) {
-            clearModalError("containerTypeModalError");
-            try {
-                const type = await fetchData(`${API_BASE_URL}/api/admin/container-types/${id}`);
-                document.getElementById("containerTypeId").value = type.id;
-                document.getElementById("containerTypeName").value = type.name;
-                document.getElementById("containerTypeDescription").value = type.description || "";
-                document.getElementById("containerTypeModalLabel").textContent = "Редактировать Тип Контейнера";
-                containerTypeModalInstance.show();
-            } catch (error) {
-                displayError("containerTypesErrorDisplay", `Ошибка при загрузке данных типа контейнера: ${error.message}`);
-            }
+        function editContainerType(ct) {
+            document.getElementById('ctId').value = ct.id;
+            document.getElementById('ctName').value = ct.name || '';
+            document.getElementById('ctDescription').value = ct.description || '';
+            document.getElementById('ctModalLabel').textContent = 'Редактировать тип контейнера';
+            new bootstrap.Modal(document.getElementById('ctModal')).show();
         }
 
         async function saveContainerType() {
-            clearModalError("containerTypeModalError");
-            const typeId = document.getElementById("containerTypeId").value;
-            const typeData = {
-                name: document.getElementById("containerTypeName").value,
-                description: document.getElementById("containerTypeDescription").value || null
+            const id = document.getElementById('ctId').value;
+            const data = {
+                name: document.getElementById('ctName').value,
+                description: document.getElementById('ctDescription').value,
             };
 
-            if (!typeData.name) {
-                displayModalError("containerTypeModalError", "Название типа обязательно.");
-                return;
-            }
-
-            const url = typeId ? `${API_BASE_URL}/api/admin/container-types/${typeId}` : `${API_BASE_URL}/api/admin/container-types`;
-            const method = typeId ? "PUT" : "POST";
-
             try {
-                await fetchData(url, {
-                    method: method,
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify(typeData)
-                });
-                containerTypeModalInstance.hide();
-                loadContainerTypes(); // Обновить таблицу
-                loadContainerTypesForDropdown(); // Обновить выпадающий список в ставках
+                if (id) {
+                    await putData(`admin/container-types/${id}`, data);
+                    showAlert('ct-alert', 'Тип контейнера успешно обновлен.', 'success');
+                } else {
+                    await postData("admin/container-types", data);
+                    showAlert('ct-alert', 'Тип контейнера успешно добавлен.', 'success');
+                }
+                bootstrap.Modal.getInstance(document.getElementById('ctModal')).hide();
+                fetchContainerTypes(); // Refresh the list
             } catch (error) {
-                displayModalError("containerTypeModalError", error);
+                 showAlert('ct-alert', `Ошибка сохранения типа контейнера: ${error.message}`);
             }
         }
 
         async function deleteContainerType(id) {
-            // Получаем имя для подтверждения (не обязательно, но полезно)
-            let typeName = `ID ${id}`;
-            try {
-                const type = await fetchData(`${API_BASE_URL}/api/admin/container-types/${id}`);
-                typeName = type.name;
-            } catch (e) { /* Игнорируем ошибку получения имени */ }
-
-            if (!confirm(`Вы уверены, что хотите удалить тип контейнера '${typeName}'? Это возможно только если он не используется.`)) return;
-            
-            try {
-                await fetchData(`${API_BASE_URL}/api/admin/container-types/${id}`, { method: "DELETE" });
-                loadContainerTypes(); // Обновить таблицу
-                loadContainerTypesForDropdown(); // Обновить выпадающий список в ставках
-            } catch (error) {
-                displayError("containerTypesErrorDisplay", `Ошибка при удалении типа контейнера: ${error.message}`);
+            if (confirm('Вы уверены, что хотите удалить этот тип контейнера? Это может повлиять на базовые ставки.')) {
+                try {
+                    await deleteData(`admin/container-types/${id}`);
+                    showAlert('ct-alert', 'Тип контейнера успешно удален.', 'success');
+                    fetchContainerTypes(); // Refresh the list
+                } catch (error) {
+                    showAlert('ct-alert', `Ошибка удаления типа контейнера: ${error.message}`);
+                }
             }
         }
 
-        // --- Индексы --- 
-        async function loadIndices() {
+        // --- Indices --- 
+        async function fetchIndices() {
             try {
-                const indices = await fetchData(`${API_BASE_URL}/api/admin/index-config`);
-                const tableBody = document.getElementById("indicesTable").querySelector("tbody");
-                tableBody.innerHTML = "";
+                const indices = await fetchData("admin/indices");
+                const tableBody = document.getElementById('indices-table-body');
+                tableBody.innerHTML = ''; // Clear existing data
                 indices.forEach(index => {
                     const row = tableBody.insertRow();
-                    const lastUpdated = index.last_updated ? new Date(index.last_updated).toLocaleString() : "-";
                     row.innerHTML = `
-                        <td>${sanitizeHTML(index.index_name)}</td>
-                        <td>${sanitizeHTML(index.current_value) ?? "-"}</td>
-                        <td>${sanitizeHTML(index.baseline_value) ?? "-"}</td>
-                        <td>${sanitizeHTML(index.weight_percentage) ?? "-"}</td>
-                        <td>${lastUpdated}</td>
+                        <td>${index.index_name || ''}</td>
+                        <td>${index.baseline_value || ''}</td>
+                        <td>${index.weight_percentage || ''}</td>
+                        <td>${index.current_value || ''}</td>
+                        <td>${formatDate(index.last_updated)}</td>
                         <td>
-                            <button class="btn btn-sm btn-warning" onclick="editIndex(\'${sanitizeHTML(index.index_name)}\')">Ред.</button>
-                            <button class="btn btn-sm btn-danger" onclick="deleteIndex(\'${sanitizeHTML(index.index_name)}\')">Удал.</button>
+                            <button class="btn btn-sm btn-warning" onclick='editIndex(${JSON.stringify(index)})'>Edit</button>
+                            <!-- Delete might not be needed for indices, they are usually fixed -->
                         </td>
                     `;
                 });
+                 hideAlert('indices-alert');
             } catch (error) {
-                 displayError("indicesErrorDisplay", error);
+                showAlert('indices-alert', `Ошибка загрузки индексов: ${error.message}`);
             }
         }
 
-        async function uploadIndicesFile(event) {
+        function editIndex(index) {
+            document.getElementById('indexNameHidden').value = index.index_name;
+            document.getElementById('indexNameDisplay').textContent = index.index_name;
+            document.getElementById('indexBaseline').value = index.baseline_value || '';
+            document.getElementById('indexWeight').value = index.weight_percentage || '';
+            document.getElementById('indexCurrent').value = index.current_value || '';
+            document.getElementById('indexModalLabel').textContent = `Редактировать индекс: ${index.index_name}`;
+            new bootstrap.Modal(document.getElementById('indexModal')).show();
+        }
+
+        async function saveIndex() {
+            const indexName = document.getElementById('indexNameHidden').value;
+            const data = {
+                baseline_value: parseFloat(document.getElementById('indexBaseline').value),
+                weight_percentage: parseFloat(document.getElementById('indexWeight').value),
+                current_value: document.getElementById('indexCurrent').value ? parseFloat(document.getElementById('indexCurrent').value) : null,
+            };
+
+            // Basic validation
+            if (isNaN(data.baseline_value) || isNaN(data.weight_percentage)) {
+                 showAlert('indices-alert', 'Базовое значение и вес должны быть числами.');
+                 return;
+            }
+             if (data.weight_percentage < 0 || data.weight_percentage > 100) {
+                 showAlert('indices-alert', 'Вес должен быть в диапазоне от 0 до 100.');
+                 return;
+            }
+
+            try {
+                await putData(`admin/indices/${indexName}`, data);
+                showAlert('indices-alert', 'Индекс успешно обновлен.', 'success');
+                bootstrap.Modal.getInstance(document.getElementById('indexModal')).hide();
+                fetchIndices(); // Refresh the list
+            } catch (error) {
+                 showAlert('indices-alert', `Ошибка сохранения индекса: ${error.message}`);
+            }
+        }
+
+        // --- Base Rates --- 
+        let availableContainerTypes = []; // Store fetched container types
+
+        function populateContainerTypeDropdown(containerTypes) {
+            availableContainerTypes = containerTypes; // Update global store
+            const select = document.getElementById('rateContainerType');
+            select.innerHTML = '<option value="">Выберите тип...</option>'; // Clear and add default
+            containerTypes.forEach(ct => {
+                const option = document.createElement('option');
+                option.value = ct.name; // Use name (code) as value
+                option.textContent = `${ct.name} (${ct.description || ''})`;
+                select.appendChild(option);
+            });
+        }
+
+        async function fetchBaseRates() {
+            try {
+                const rates = await fetchData("admin/base-rates");
+                const tableBody = document.getElementById('rates-table-body');
+                tableBody.innerHTML = ''; // Clear existing data
+                rates.forEach(rate => {
+                    const row = tableBody.insertRow();
+                    row.innerHTML = `
+                        <td>${rate.id}</td>
+                        <td>${rate.origin_region || ''}</td>
+                        <td>${rate.destination_region || ''}</td>
+                        <td>${rate.container_type || ''}</td>
+                        <td>${rate.rate || ''}</td>
+                        <td>
+                            <button class="btn btn-sm btn-warning" onclick='editBaseRate(${JSON.stringify(rate)})'>Edit</button>
+                            <button class="btn btn-sm btn-danger" onclick="deleteBaseRate(${rate.id})">Delete</button>
+                        </td>
+                    `;
+                });
+                hideAlert('rates-alert');
+            } catch (error) {
+                showAlert('rates-alert', `Ошибка загрузки базовых ставок: ${error.message}`);
+            }
+        }
+
+        function prepareAddBaseRate() {
+            document.getElementById('rateForm').reset();
+            document.getElementById('rateId').value = '';
+            document.getElementById('rateModalLabel').textContent = 'Добавить базовую ставку';
+            // Ensure dropdown is populated
+            if (availableContainerTypes.length === 0) {
+                fetchContainerTypes(); // Fetch if not already loaded
+            } else {
+                populateContainerTypeDropdown(availableContainerTypes);
+            }
+        }
+
+        function editBaseRate(rate) {
+            document.getElementById('rateId').value = rate.id;
+            document.getElementById('rateOriginRegion').value = rate.origin_region || '';
+            document.getElementById('rateDestinationRegion').value = rate.destination_region || '';
+            document.getElementById('rateValue').value = rate.rate || '';
+            document.getElementById('rateModalLabel').textContent = 'Редактировать базовую ставку';
+            
+            // Ensure dropdown is populated and select correct option
+             if (availableContainerTypes.length === 0) {
+                fetchContainerTypes().then(() => {
+                     document.getElementById('rateContainerType').value = rate.container_type || '';
+                });
+            } else {
+                populateContainerTypeDropdown(availableContainerTypes);
+                document.getElementById('rateContainerType').value = rate.container_type || '';
+            }
+
+            new bootstrap.Modal(document.getElementById('rateModal')).show();
+        }
+
+        async function saveBaseRate() {
+            const id = document.getElementById('rateId').value;
+            const data = {
+                origin_region: document.getElementById('rateOriginRegion').value,
+                destination_region: document.getElementById('rateDestinationRegion').value,
+                container_type: document.getElementById('rateContainerType').value,
+                rate: parseFloat(document.getElementById('rateValue').value),
+            };
+             // Basic validation
+            if (!data.origin_region || !data.destination_region || !data.container_type || isNaN(data.rate)) {
+                 showAlert('rates-alert', 'Все поля обязательны, ставка должна быть числом.');
+                 return;
+            }
+
+            try {
+                if (id) {
+                    await putData(`admin/base-rates/${id}`, data);
+                    showAlert('rates-alert', 'Базовая ставка успешно обновлена.', 'success');
+                } else {
+                    await postData("admin/base-rates", data);
+                    showAlert('rates-alert', 'Базовая ставка успешно добавлена.', 'success');
+                }
+                bootstrap.Modal.getInstance(document.getElementById('rateModal')).hide();
+                fetchBaseRates(); // Refresh the list
+            } catch (error) {
+                 showAlert('rates-alert', `Ошибка сохранения базовой ставки: ${error.message}`);
+            }
+        }
+
+        async function deleteBaseRate(id) {
+            if (confirm('Вы уверены, что хотите удалить эту базовую ставку?')) {
+                try {
+                    await deleteData(`admin/base-rates/${id}`);
+                    showAlert('rates-alert', 'Базовая ставка успешно удалена.', 'success');
+                    fetchBaseRates(); // Refresh the list
+                } catch (error) {
+                    showAlert('rates-alert', `Ошибка удаления базовой ставки: ${error.message}`);
+                }
+            }
+        }
+
+        // --- Model Settings --- 
+        async function fetchModelSettings() {
+            try {
+                const settings = await fetchData("admin/model-settings");
+                const form = document.getElementById('modelSettingsForm');
+                form.innerHTML = ''; // Clear existing fields
+                settings.forEach(setting => {
+                    const div = document.createElement('div');
+                    div.classList.add('mb-3');
+                    div.innerHTML = `
+                        <label for="setting-${setting.setting_key}" class="form-label">${setting.description || setting.setting_key}</label>
+                        <input type="text" class="form-control" id="setting-${setting.setting_key}" name="${setting.setting_key}" value="${setting.setting_value}">
+                    `;
+                    form.appendChild(div);
+                });
+                hideAlert('settings-alert');
+            } catch (error) {
+                showAlert('settings-alert', `Ошибка загрузки настроек: ${error.message}`);
+            }
+        }
+
+        async function saveModelSettings() {
+            const form = document.getElementById('modelSettingsForm');
+            const inputs = form.querySelectorAll('input');
+            const settingsToSave = [];
+            inputs.forEach(input => {
+                settingsToSave.push({
+                    setting_key: input.name,
+                    setting_value: input.value
+                });
+            });
+
+            try {
+                await putData("admin/model-settings", { settings: settingsToSave });
+                showAlert('settings-alert', 'Настройки модели успешно сохранены.', 'success');
+                fetchModelSettings(); // Refresh
+            } catch (error) {
+                showAlert('settings-alert', `Ошибка сохранения настроек: ${error.message}`);
+            }
+        }
+
+        // --- History --- 
+        async function fetchHistory() {
+            try {
+                const history = await fetchData("admin/history");
+                const tableBody = document.getElementById('history-table-body');
+                tableBody.innerHTML = ''; // Clear existing data
+                history.forEach(entry => {
+                    const row = tableBody.insertRow();
+                    row.innerHTML = `
+                        <td>${entry.id}</td>
+                        <td>${formatDate(entry.timestamp)}</td>
+                        <td>${entry.user_email || ''}</td>
+                        <td>${entry.origin_port_code || entry.origin_port_id || ''}</td>
+                        <td>${entry.destination_port_code || entry.destination_port_id || ''}</td>
+                        <td>${entry.container_type || ''}</td>
+                        <td>${entry.weight || ''}</td>
+                        <td>${entry.calculated_rate || ''}</td>
+                        <td><pre style="max-height: 100px; overflow: auto;">${JSON.stringify(entry.index_values_used, null, 2)}</pre></td>
+                    `;
+                });
+                hideAlert('history-alert');
+            } catch (error) {
+                showAlert('history-alert', `Ошибка загрузки истории: ${error.message}`);
+            }
+        }
+
+        // --- File Uploads --- 
+        document.getElementById('uploadIndexForm').addEventListener('submit', async function(event) {
             event.preventDefault();
-            const form = event.target;
-            const formData = new FormData(form);
-            const statusDiv = document.getElementById("indicesUploadStatus");
-            statusDiv.innerHTML = 
-(Content truncated due to size limit. Use line ranges to read in chunks)
+            const fileInput = document.getElementById('indexFile');
+            const file = fileInput.files[0];
+            const errorDiv = document.getElementById('uploadIndexError');
+            const successDiv = document.getElementById('uploadIndexSuccess');
+            errorDiv.textContent = '';
+            successDiv.style.display = 'none';
+
+            if (!file) {
+                errorDiv.textContent = 'Пожалуйста, выберите файл.';
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('indicesFile', file);
+
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/upload/indices`, {
+                    method: 'POST',
+                    body: formData,
+                });
+                const result = await response.json();
+                if (!response.ok) {
+                    throw new Error(result.error || `HTTP error! status: ${response.status}`);
+                }
+                successDiv.textContent = result.message || 'Файл индексов успешно загружен и обработан.';
+                successDiv.style.display = 'block';
+                fileInput.value = ''; // Clear file input
+                fetchIndices(); // Refresh indices list
+            } catch (error) {
+                errorDiv.textContent = `Ошибка загрузки файла индексов: ${error.message}`;
+            }
+        });
+
+        document.getElementById('uploadRatesForm').addEventListener('submit', async function(event) {
+            event.preventDefault();
+            const fileInput = document.getElementById('ratesFile');
+            const file = fileInput.files[0];
+            const errorDiv = document.getElementById('uploadRatesError');
+            const successDiv = document.getElementById('uploadRatesSuccess');
+            errorDiv.textContent = '';
+            successDiv.style.display = 'none';
+
+            if (!file) {
+                errorDiv.textContent = 'Пожалуйста, выберите файл.';
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('ratesFile', file);
+
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/upload/base-rates`, {
+                    method: 'POST',
+                    body: formData,
+                });
+                const result = await response.json();
+                if (!response.ok) {
+                    throw new Error(result.error || `HTTP error! status: ${response.status}`);
+                }
+                successDiv.textContent = result.message || 'Файл базовых ставок успешно загружен и обработан.';
+                successDiv.style.display = 'block';
+                fileInput.value = ''; // Clear file input
+                fetchBaseRates(); // Refresh rates list
+            } catch (error) {
+                errorDiv.textContent = `Ошибка загрузки файла ставок: ${error.message}`;
+            }
+        });
+
+        // --- Initial Load --- 
+        document.addEventListener('DOMContentLoaded', () => {
+            fetchPorts();
+            fetchContainerTypes();
+            fetchIndices();
+            fetchBaseRates();
+            fetchModelSettings();
+            fetchHistory();
+        });
+
+    </script>
+</body>
+</html>
+
