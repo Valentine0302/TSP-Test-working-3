@@ -1,4 +1,4 @@
-// Интеграционный модуль v4.12: Исправлена ошибка вставки портов (id полностью убран из запроса).
+// Интеграционный модуль v4.13: Добавлено удаление и пересоздание таблицы ports при инициализации.
 
 import express from 'express';
 import cors from 'cors';
@@ -163,7 +163,7 @@ async function loadInitialDataFromJson() {
     }
 }
 
-// --- Инициализация таблиц БД (Логика миграции из v4.1, v4.6, v4.7 - без изменений) --- 
+// --- Инициализация таблиц БД (v4.13: Добавлено DROP TABLE для ports) --- 
 async function initializeDatabaseTables() {
   console.log("Initializing database tables...");
   let client;
@@ -171,11 +171,13 @@ async function initializeDatabaseTables() {
     client = await pool.connect();
     await client.query("BEGIN");
 
-    // Таблица портов
+    // Таблица портов (v4.13: Принудительное удаление и пересоздание)
+    console.log("Dropping and recreating 'ports' table...");
+    await client.query(`DROP TABLE IF EXISTS ports CASCADE;`); // Удаляем таблицу, если существует
     await client.query(`
-      CREATE TABLE IF NOT EXISTS ports (
+      CREATE TABLE ports (
         id SERIAL PRIMARY KEY,
-        name VARCHAR(255) UNIQUE NOT NULL, -- Сделаем name UNIQUE, т.к. используем для ON CONFLICT
+        name VARCHAR(255) UNIQUE NOT NULL, 
         code VARCHAR(10), 
         region VARCHAR(50),
         latitude NUMERIC,
@@ -183,16 +185,10 @@ async function initializeDatabaseTables() {
         country VARCHAR(100)
       );
     `);
-    // Убедимся, что name уникально
-    await client.query(`ALTER TABLE ports DROP CONSTRAINT IF EXISTS ports_name_key;`); // Удаляем старое ограничение, если было
-    await client.query(`ALTER TABLE ports ADD CONSTRAINT ports_name_key UNIQUE (name);`); // Добавляем новое
-    await client.query(`ALTER TABLE ports ADD COLUMN IF NOT EXISTS country VARCHAR(100);`);
-    await client.query(`ALTER TABLE ports ADD COLUMN IF NOT EXISTS code VARCHAR(10);`); // Убедимся, что столбец code существует
-    await client.query(`ALTER TABLE ports ADD COLUMN IF NOT EXISTS region VARCHAR(50);`);
-    await client.query(`ALTER TABLE ports ADD COLUMN IF NOT EXISTS latitude NUMERIC;`);
-    await client.query(`ALTER TABLE ports ADD COLUMN IF NOT EXISTS longitude NUMERIC;`);
+    console.log("'ports' table recreated successfully.");
+    // Дополнительные ALTER TABLE для ports больше не нужны, т.к. таблица создается заново
 
-    // Таблица типов контейнеров
+    // Таблица типов контейнеров (без изменений)
     await client.query(`
       CREATE TABLE IF NOT EXISTS container_types (
         id SERIAL PRIMARY KEY,
@@ -203,7 +199,7 @@ async function initializeDatabaseTables() {
     await client.query(`ALTER TABLE container_types ADD COLUMN IF NOT EXISTS description TEXT;`);
     await client.query(`ALTER TABLE container_types ALTER COLUMN name TYPE VARCHAR(50);`); 
 
-    // Таблица базовых ставок
+    // Таблица базовых ставок (без изменений)
     await client.query(`
       CREATE TABLE IF NOT EXISTS base_rates (
         id SERIAL PRIMARY KEY, 
@@ -217,7 +213,7 @@ async function initializeDatabaseTables() {
     `);
     await client.query(`ALTER TABLE base_rates ALTER COLUMN container_type TYPE VARCHAR(50);`);
 
-    // Таблица конфигурации индексов
+    // Таблица конфигурации индексов (без изменений)
     await client.query(`
       CREATE TABLE IF NOT EXISTS index_config (
         index_name VARCHAR(50) PRIMARY KEY,
@@ -228,7 +224,7 @@ async function initializeDatabaseTables() {
       );
     `);
 
-    // Таблица настроек модели
+    // Таблица настроек модели (без изменений)
     await client.query(`
       CREATE TABLE IF NOT EXISTS model_settings (
         setting_key VARCHAR(50) PRIMARY KEY,
@@ -241,7 +237,7 @@ async function initializeDatabaseTables() {
       ('sensitivityCoeff', '0.5', 'Coefficient of sensitivity to index changes (0-1)')
       ON CONFLICT (setting_key) DO NOTHING;`);
 
-    // Таблица истории расчетов
+    // Таблица истории расчетов (без изменений)
     await client.query(`
       CREATE TABLE IF NOT EXISTS calculation_history (
         id SERIAL PRIMARY KEY,
@@ -364,40 +360,54 @@ app.post('/api/calculate', async (req, res) => {
         const destinationPortData = await client.query('SELECT * FROM ports WHERE COALESCE(code, name) = $1 LIMIT 1', [destinationPort]);
 
         if (originPortData.rows.length === 0 || destinationPortData.rows.length === 0) {
-            return res.status(404).json({ error: 'Origin or destination port not found in database.' });
+            return res.status(404).json({ error: 'Origin or destination port not found' });
         }
 
         const origin = originPortData.rows[0];
         const destination = destinationPortData.rows[0];
 
-        // 2. Загрузить актуальную конфигурацию расчета (ставки, индексы, настройки)
+        // 2. Загрузить актуальную конфигурацию расчета из БД
         const { baseRatesConfig, indicesConfig, modelSettings } = await loadCalculationConfigFromDB();
 
-        // 3. Получить коэффициент сезонности
-        const currentMonth = new Date().getMonth() + 1; // Месяц от 1 до 12
-        const seasonalityFactor = await fetchSeasonalityFactor(client, origin.region, destination.region, currentMonth);
+        // 3. Получить фактор сезонности
+        const seasonalityFactor = await fetchSeasonalityFactor(client, origin.region, destination.region, new Date());
 
-        // 4. Вызвать функцию расчета ставки
+        // 4. Рассчитать ставку
         const calculatedRate = calculateFreightRate(
-            origin, 
-            destination, 
+            origin.region, 
+            destination.region, 
             containerType, 
             baseRatesConfig, 
             indicesConfig, 
             modelSettings.sensitivityCoeff || 0.5, // Значение по умолчанию, если не найдено
-            seasonalityFactor,
-            weight // Передаем вес, если он есть
+            seasonalityFactor
         );
 
-        // 5. Сохранить запрос в историю (асинхронно, не блокируем ответ)
-        saveRequestToHistory(pool, origin, destination, containerType, weight, calculatedRate, userEmail, indicesConfig)
-            .catch(err => console.error("Error saving calculation to history:", err)); // Логируем ошибку сохранения
+        if (calculatedRate === null) {
+            return res.status(404).json({ error: 'Rate not available for the specified route and container type.' });
+        }
+
+        // 5. Сохранить запрос в историю (если нужно)
+        if (userEmail) { // Сохраняем только если email предоставлен
+            await saveRequestToHistory(
+                client, 
+                origin.code || origin.name, // Используем code, если есть, иначе name
+                destination.code || destination.name, 
+                containerType, 
+                weight, // Добавляем вес
+                calculatedRate,
+                userEmail,
+                origin.id, // Добавляем ID портов
+                destination.id,
+                indicesConfig // Добавляем использованные значения индексов
+            );
+        }
 
         // 6. Отправить результат
-        res.json({ calculatedRate });
+        res.json({ rate: calculatedRate.toFixed(2) });
 
     } catch (error) {
-        console.error('Error calculating rate:', error);
+        console.error('Error calculating freight rate:', error);
         res.status(500).json({ error: `Failed to calculate rate: ${error.message}` });
     } finally {
         if (client) client.release();
