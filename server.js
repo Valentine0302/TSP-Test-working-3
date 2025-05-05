@@ -1,4 +1,4 @@
-// Интеграционный модуль v4.10: Убрана зависимость от initial_data.js, данные читаются напрямую из extracted_data.json.
+// Интеграционный модуль v4.11: Исправлена ошибка вставки портов (явно указано DEFAULT для id).
 
 import express from 'express';
 import cors from 'cors';
@@ -52,7 +52,7 @@ app.get('/admin', (req, res) => {
 // --- Инициализация системы --- 
 async function initializeSystem() {
   try {
-    console.log('Initializing freight calculator system v4.10 (Direct JSON Data Load).');
+    console.log('Initializing freight calculator system v4.11 (Fix Port Insert).');
     await initializeDatabaseTables(); 
     await loadInitialDataFromJson(); // <--- Заменено на загрузку из JSON
     console.log('System initialization completed');
@@ -62,7 +62,7 @@ async function initializeSystem() {
   }
 }
 
-// --- Загрузка начальных данных из JSON (v4.10) ---
+// --- Загрузка начальных данных из JSON (v4.11) ---
 async function loadInitialDataFromJson() {
     console.log("Attempting to load initial data from extracted_data.json...");
     let client;
@@ -92,14 +92,16 @@ async function loadInitialDataFromJson() {
         let portCount = 0;
         for (const port of initialData.ports) {
             try {
+                // Modified Query v4.11: Explicitly use DEFAULT for id
                 await client.query(
-                    `INSERT INTO ports (name, code, region, country, latitude, longitude)
-                     VALUES ($1, $2, $3, $4, $5, $6)
-                     ON CONFLICT (name) DO NOTHING;`, // Используем name для ON CONFLICT
+                    `INSERT INTO ports (id, name, code, region, country, latitude, longitude)
+                     VALUES (DEFAULT, $1, $2, $3, $4, $5, $6)
+                     ON CONFLICT (name) DO NOTHING;`,
                     [port.name, port.code || null, port.region || null, port.country || null, port.latitude || null, port.longitude || null]
                 );
                 portCount++;
             } catch (err) {
+                // Keep detailed logging
                 console.warn(`Error inserting port row: ${JSON.stringify(port)}, Error: ${err.message}`);
             }
         }
