@@ -1,4 +1,4 @@
-// Интеграционный модуль v4.24: Внедрение async error handling и проверка middleware.
+// Интеграционный модуль v4.26: Изолированный тест asyncHandler на одном маршруте.
 
 import express from 'express';
 import cors from 'cors';
@@ -14,10 +14,6 @@ import fs from 'fs'; // Импортируем модуль fs для чтени
 // Импорт модулей анализа и расчета
 import { initializeAndUpdateSeasonalityData, initializeSeasonalityTables, fetchSeasonalityFactor } from './seasonality_analyzer.js';
 import { calculateFreightRate, saveRequestToHistory } from './freight_calculator_enhanced.js';
-
-// Helper function to wrap async route handlers (v4.24)
-const asyncHandler = (fn) => (req, res, next) =>
-  Promise.resolve(fn(req, res, next)).catch(next);
 
 // Загрузка переменных окружения
 dotenv.config();
@@ -56,7 +52,7 @@ app.get('/admin', (req, res) => {
 // --- Инициализация системы --- 
 async function initializeSystem() {
   try {
-     console.log('Initializing freight calculator system v4.24 (Async Error Handling & Middleware Review).');
+     console.log("Initializing freight calculator system v4.26 (Isolated asyncHandler Test).");
     await initializeDatabaseTables();
     await loadInitialDataFromJson(); // <--- Заменено на загрузку из JSON
     console.log('System initialization completed');
@@ -66,7 +62,7 @@ async function initializeSystem() {
   }
 }
 
-// --- Загрузка начальных данных из JSON (v4.24 Async Error Handling & Middleware Review) ---
+// --- Загрузка начальных данных из JSON (v4.26 Isolated asyncHandler Test) ---
 async function loadInitialDataFromJson() {
     console.log("Attempting to load initial data from extracted_data.json...");
     let client;
@@ -167,7 +163,7 @@ async function loadInitialDataFromJson() {
     }
 }
 
-// --- Инициализация таблиц БД (v4.24 Async Error Handling & Middleware Review, logic from v4.13/v4.14) --- 
+// --- Инициализация таблиц БД (v4.26 Isolated asyncHandler Test, logic from v4.13/v4.14) --- 
 async function initializeDatabaseTables() {
   console.log("Initializing database tables...");
   let client;
@@ -286,7 +282,9 @@ async function initializeDatabaseTables() {
   }
 }
 
-// --- Вспомогательные функции (без изменений) --- 
+// --- Вспомогательные функции (v4.26 Isolated asyncHandler Test) --- 
+
+const asyncHandler = fn => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 
 function validateEmail(email) {
   const re = /^(([^<>()[\]\\.,;:\s@"]+(\.[^<>()[\]\\.,;:\s@"]+)*)|(".+"))@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}])|(([a-zA-Z\-0-9]+\.)+[a-zA-Z]{2,}))$/;
@@ -341,8 +339,8 @@ async function loadCalculationConfigFromDB() {
 
 // --- API Эндпоинты --- 
 
-// Эндпоинт для расчета ставки
-app.post('/api/calculate', asyncHandler(async (req, res) => {
+// Эндпоинт для расчета ставки (v4.26 Isolated asyncHandler Test)
+app.post("/api/calculate", asyncHandler(async (req, res, next) => {
     const { originPort, destinationPort, containerType, weight, userEmail } = req.body;
 
     // Валидация входных данных
@@ -415,12 +413,12 @@ app.post('/api/calculate', asyncHandler(async (req, res) => {
     } finally {
         if (client) client.release();
     }
-});
+}));
 
 // --- API для Админ-панели --- 
 
 // Получить все порты
-app.get("/api/admin/ports", asyncHandler(async (req, res) => {
+app.get('/api/admin/ports', async (req, res) => {
     try {
         const result = await pool.query('SELECT id, name, code, region, country, latitude, longitude FROM ports ORDER BY name');
         res.json(result.rows);
@@ -431,7 +429,7 @@ app.get("/api/admin/ports", asyncHandler(async (req, res) => {
 });
 
 // Получить все типы контейнеров
-app.get("/api/admin/container-types", asyncHandler(async (req, res) => {
+app.get('/api/admin/container-types', async (req, res) => {
     try {
         const result = await pool.query('SELECT id, name, description FROM container_types ORDER BY name');
         res.json(result.rows);
@@ -442,7 +440,7 @@ app.get("/api/admin/container-types", asyncHandler(async (req, res) => {
 });
 
 // Получить конфигурацию индексов
-app.get("/api/admin/indices", asyncHandler(async (req, res) => {
+app.get('/api/admin/indices', async (req, res) => {
     try {
         const result = await pool.query('SELECT index_name, baseline_value, weight_percentage, current_value, last_updated FROM index_config ORDER BY index_name');
         res.json(result.rows);
@@ -453,7 +451,7 @@ app.get("/api/admin/indices", asyncHandler(async (req, res) => {
 });
 
 // Получить базовые ставки
-app.get("/api/admin/base-rates", asyncHandler(async (req, res) => {
+app.get('/api/admin/base-rates', async (req, res) => {
     try {
         const result = await pool.query('SELECT id, origin_region, destination_region, container_type, rate FROM base_rates ORDER BY origin_region, destination_region, container_type');
         res.json(result.rows);
@@ -464,7 +462,7 @@ app.get("/api/admin/base-rates", asyncHandler(async (req, res) => {
 });
 
 // Получить историю расчетов
-app.get("/api/admin/history", asyncHandler(async (req, res) => {
+app.get('/api/admin/history', async (req, res) => {
     try {
         // Добавим LEFT JOIN для получения имен портов
         const result = await pool.query(`
@@ -490,7 +488,7 @@ app.get("/api/admin/history", asyncHandler(async (req, res) => {
 // --- Загрузка данных через Админ-панель --- 
 
 // Загрузка Excel файла с индексами
-app.post("/api/admin/indices/upload", upload.single("indicesFile"), asyncHandler(async (req, res) => {
+app.post('/api/admin/indices/upload', upload.single('indicesFile'), async (req, res) => {
     if (!req.file) {
         return res.status(400).json({ error: 'No file uploaded.' });
     }
@@ -555,7 +553,7 @@ app.post("/api/admin/indices/upload", upload.single("indicesFile"), asyncHandler
 });
 
 // Загрузка Excel файла с базовыми ставками
-app.post("/api/admin/base-rates/upload", upload.single("ratesFile"), asyncHandler(async (req, res) => {
+app.post('/api/admin/base-rates/upload', upload.single('baseRatesFile'), async (req, res) => {
     if (!req.file) {
         return res.status(400).json({ error: 'No file uploaded.' });
     }
@@ -657,7 +655,7 @@ app.post('/api/admin/indices', async (req, res) => {
 });
 
 // Удалить Индекс
-app.put("/api/admin/indices/:index_name", asyncHandler(async (req, res) => {
+app.delete('/api/admin/indices/:index_name', async (req, res) => {
     const { index_name } = req.params;
     try {
         const result = await pool.query('DELETE FROM index_config WHERE index_name = $1 RETURNING *;', [index_name]);
@@ -721,7 +719,7 @@ app.delete('/api/admin/base-rates/:id', async (req, res) => {
 });
 
 // Добавить/Обновить Порт (Добавлено в v4.9)
-app.post("/api/admin/ports", asyncHandler(async (req, res) => {
+app.post('/api/admin/ports', async (req, res) => {
     const { name, code, region, country, latitude, longitude } = req.body;
     if (!name) {
         return res.status(400).json({ error: 'Missing required field: name' });
@@ -778,7 +776,7 @@ app.delete('/api/admin/ports/:id', async (req, res) => {
 
 
 // Добавить/Обновить Тип Контейнера (Добавлено в v4.9)
-app.post("/api/admin/container-types", asyncHandler(async (req, res) => {
+app.post('/api/admin/container-types', async (req, res) => {
     const { name, description } = req.body;
     if (!name) {
         return res.status(400).json({ error: 'Missing required field: name' });
