@@ -15,9 +15,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 // Load ports from API
 async function loadPorts() {
-  console.log('Loading ports...');
+  console.log('Loading ports from /api/public/ports...');
   try {
-    const response = await fetch('/api/ports');
+    const response = await fetch('/api/public/ports'); // MODIFIED
     if (!response.ok) {
       throw new Error('Failed to fetch ports');
     }
@@ -53,14 +53,14 @@ async function loadPorts() {
       regionPorts.forEach(port => {
         // Create option for origin
         const originOption = document.createElement('option');
-        originOption.value = port.id;
-        originOption.textContent = `${port.name}, ${port.country} (${port.id})`;
+        originOption.value = port.id; // Using ID as value, as per original script logic
+        originOption.textContent = `${port.name}, ${port.country} (${port.code || port.id})`; // Display name, country, and code/id
         originGroup.appendChild(originOption);
         
         // Create option for destination
         const destinationOption = document.createElement('option');
-        destinationOption.value = port.id;
-        destinationOption.textContent = `${port.name}, ${port.country} (${port.id})`;
+        destinationOption.value = port.id; // Using ID as value
+        destinationOption.textContent = `${port.name}, ${port.country} (${port.code || port.id})`;
         destinationGroup.appendChild(destinationOption);
       });
       
@@ -75,9 +75,9 @@ async function loadPorts() {
 
 // Load container types from API
 async function loadContainerTypes() {
-  console.log('Loading container types...');
+  console.log('Loading container types from /api/public/container-types...');
   try {
-    const response = await fetch('/api/container-types');
+    const response = await fetch('/api/public/container-types'); // MODIFIED
     if (!response.ok) {
       throw new Error('Failed to fetch container types');
     }
@@ -93,8 +93,8 @@ async function loadContainerTypes() {
     // Add container types
     containerTypes.forEach(containerType => {
       const option = document.createElement('option');
-      option.value = containerType.id;
-      option.textContent = `${containerType.name} - ${containerType.description}`;
+      option.value = containerType.name; // Using name as value, as per original script logic for calculation
+      option.textContent = `${containerType.name} - ${containerType.description || ''}`;
       containerTypeSelect.appendChild(option);
     });
   } catch (error) {
@@ -119,14 +119,14 @@ async function handleFormSubmit(event) {
     // Get form data
     const formData = new FormData(form);
     const data = {
-      originPort: formData.get('origin'),
-      destinationPort: formData.get('destination'),
-      containerType: formData.get('containerType'),
+      originPort: formData.get('origin'), // This will be port ID
+      destinationPort: formData.get('destination'), // This will be port ID
+      containerType: formData.get('containerType'), // This will be container type name
       weight: 20000, // Добавляем стандартный вес 20 тонн
       email: formData.get('email')
     };
     
-    console.log('Sending data to API:', data);
+    console.log('Sending data to API for calculation:', data);
     
     // Call API to calculate rate
     const response = await fetch('/api/calculate', {
@@ -143,12 +143,12 @@ async function handleFormSubmit(event) {
     }
     
     const result = await response.json();
-    console.log('API response:', result); // Добавляем логирование ответа API
+    console.log('API response for calculation:', result);
     
     // Display results
     displayResults(data, result);
   } catch (error) {
-    console.error('Error:', error);
+    console.error('Error during calculation:', error);
     alert(`An error occurred while calculating the rate: ${error.message}`);
   } finally {
     // Reset button
@@ -159,7 +159,7 @@ async function handleFormSubmit(event) {
 
 // Display calculation results
 function displayResults(data, result) {
-  console.log('Displaying results:', result); // Добавляем логирование для отладки
+  console.log('Displaying results:', result);
   
   // Get port and container names
   const originSelect = document.getElementById('origin');
@@ -175,33 +175,21 @@ function displayResults(data, result) {
   document.getElementById('containerDisplay').textContent = containerTypeOption.textContent.split(' - ')[0];
   document.getElementById('dateDisplay').textContent = new Date().toLocaleDateString();
   
-  // Получаем значения ставок из ответа API
-  const minRateValue = result.minRate || result.min_rate || 0;
-  const maxRateValue = result.maxRate || result.max_rate || 0;
-  
-  // Определяем среднюю ставку из различных возможных свойств ответа API
-  let avgRateValue = 0;
-  if (result.rate !== undefined && result.rate !== null) {
-    avgRateValue = result.rate;
-  } else if (result.avgRate !== undefined && result.avgRate !== null) {
-    avgRateValue = result.avgRate;
-  } else if (result.avg_rate !== undefined && result.avg_rate !== null) {
-    avgRateValue = result.avg_rate;
-  } else {
-    // Если средняя ставка не найдена в ответе API, вычисляем её как среднее между минимальной и максимальной
+  const minRateValue = result.rateDetails?.minRate || result.minRate || result.min_rate || 0;
+  const maxRateValue = result.rateDetails?.maxRate || result.maxRate || result.max_rate || 0;
+  let avgRateValue = result.rate || result.rateDetails?.finalRate || result.avgRate || result.avg_rate || 0;
+
+  if (avgRateValue === 0 && (minRateValue !== 0 || maxRateValue !== 0)) {
     avgRateValue = Math.round((parseFloat(minRateValue) + parseFloat(maxRateValue)) / 2);
   }
   
-  console.log('Rate values:', { minRateValue, maxRateValue, avgRateValue }); // Логируем значения для отладки
+  console.log('Rate values for display:', { minRateValue, maxRateValue, avgRateValue });
   
-  // Обновляем отображение ставок
   document.getElementById('minRate').textContent = `$${minRateValue}`;
   document.getElementById('maxRate').textContent = `$${maxRateValue}`;
   
-  // РАДИКАЛЬНОЕ РЕШЕНИЕ: Полностью заменяем содержимое индикатора ставки
   const rateIndicatorContainer = document.querySelector('.mb-4');
   if (rateIndicatorContainer) {
-    // Создаем новую структуру для отображения ставок
     rateIndicatorContainer.innerHTML = `
       <p class="text-sm text-gray-500 mb-1">Rate Range (USD)</p>
       <div class="flex items-center justify-between">
@@ -210,24 +198,16 @@ function displayResults(data, result) {
         <span class="text-sm font-medium">Max: $${maxRateValue}</span>
       </div>
     `;
-    console.log('Replaced rate indicator with new structure');
   } else {
     console.error('Rate indicator container not found');
-    
-    // Запасной вариант: если не удалось найти контейнер, пробуем обновить только элемент avgRate
     const avgRateElement = document.getElementById('avgRate');
     if (avgRateElement) {
       avgRateElement.textContent = `$${avgRateValue}`;
-      console.log('Updated avgRate element with:', `$${avgRateValue}`);
-      
-      // Делаем элемент более заметным
       avgRateElement.style.fontWeight = 'bold';
       avgRateElement.style.color = 'white';
-      avgRateElement.style.backgroundColor = '#2563eb'; // blue-600
+      avgRateElement.style.backgroundColor = '#2563eb';
       avgRateElement.style.padding = '4px 8px';
       avgRateElement.style.borderRadius = '4px';
-      
-      // Убедимся, что родительский элемент видим
       const parentElement = avgRateElement.parentElement;
       if (parentElement) {
         parentElement.style.visibility = 'visible';
@@ -235,42 +215,25 @@ function displayResults(data, result) {
       }
     } else {
       console.error('avgRate element not found in DOM');
-      
-      // Крайний случай: добавляем информацию о средней ставке в другое место
-      const resultContainer = document.getElementById('resultContainer');
-      if (resultContainer) {
-        const avgRateInfo = document.createElement('div');
-        avgRateInfo.className = 'mt-4 text-center';
-        avgRateInfo.innerHTML = `
-          <p class="text-lg font-bold">
-            Average Rate: <span class="text-blue-600">$${avgRateValue}</span>
-          </p>
-        `;
-        resultContainer.appendChild(avgRateInfo);
-        console.log('Added average rate info as separate element');
-      }
     }
   }
   
-  // Обновляем дополнительную информацию
   const sourceCountElement = document.getElementById('sourceCount');
   if (sourceCountElement) {
-    sourceCountElement.textContent = result.sourceCount || result.source_count || '3';
+    sourceCountElement.textContent = result.rateDetails?.sourceCount || result.sourceCount || result.source_count || '3';
   }
   
   const reliabilityElement = document.getElementById('reliability');
   if (reliabilityElement) {
-    let reliabilityValue = result.reliability || result.reliability_score || 0.85;
-    // Преобразуем в процентный формат, если это не строка с процентами
+    let reliabilityValue = result.rateDetails?.reliabilityScore || result.reliability || result.reliability_score || 0.85;
     if (typeof reliabilityValue === 'number') {
       reliabilityValue = `${Math.round(reliabilityValue * 100)}%`;
-    } else if (!reliabilityValue.toString().includes('%')) {
+    } else if (reliabilityValue && !reliabilityValue.toString().includes('%')) {
       reliabilityValue = `${reliabilityValue}%`;
     }
     reliabilityElement.textContent = reliabilityValue;
   }
   
-  // Показываем контейнер с результатами
   const resultContainer = document.getElementById('resultContainer');
   if (resultContainer) {
     resultContainer.classList.remove('hidden');
@@ -279,3 +242,4 @@ function displayResults(data, result) {
     console.error('resultContainer element not found in DOM');
   }
 }
+
