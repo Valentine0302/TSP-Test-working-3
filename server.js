@@ -1,4 +1,4 @@
-// Интеграционный модуль v4.17: Добавлено удаление и пересоздание таблицы container_types.
+// Интеграционный модуль v4.18: Исправлены строковые литералы и обновлена версия.
 
 import express from 'express';
 import cors from 'cors';
@@ -51,10 +51,8 @@ app.get('/admin', (req, res) => {
 
 // --- Инициализация системы --- 
 async function initializeSystem() {
-  try {
-    console.log(\'Initializing freight calculator system v4.17 (Comment and Version Fix).
-');  await initializeDatabaseTables(); 
-    await loadInitialDataFromJson(); // <--- Заменено на загрузку из JSON
+  try     console.log('Initializing freight calculator system v4.18 (String Fix and Version Update).');
+    await initializeDatabaseTables();    await loadInitialDataFromJson(); // <--- Заменено на загрузку из JSON
     console.log('System initialization completed');
   } catch (error) {
     console.error('Error initializing system:', error);
@@ -62,7 +60,7 @@ async function initializeSystem() {
   }
 }
 
-// --- Загрузка начальных данных из JSON (v4.17 Comment and Version Fix) ---
+// --- Загрузка начальных данных из JSON (v4.18 String Fix and Version Update) ---
 async function loadInitialDataFromJson() {
     console.log("Attempting to load initial data from extracted_data.json...");
     let client;
@@ -163,7 +161,7 @@ async function loadInitialDataFromJson() {
     }
 }
 
-// --- Инициализация таблиц БД (v4.17 Comment and Version Fix, logic from v4.13/v4.14) --- 
+// --- Инициализация таблиц БД (v4.18 String Fix and Version Update, logic from v4.13/v4.14) --- 
 async function initializeDatabaseTables() {
   console.log("Initializing database tables...");
   let client;
