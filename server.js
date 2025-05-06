@@ -1,4 +1,4 @@
-// Интеграционный модуль v4.14: Добавлено удаление и пересоздание таблицы container_types.
+/ Интеграционный модуль v4.16: Добавлено удаление и пересоздание таблицы container_types.
 
 import express from 'express';
 import cors from 'cors';
@@ -52,7 +52,7 @@ app.get('/admin', (req, res) => {
 // --- Инициализация системы --- 
 async function initializeSystem() {
   try {
-    console.log('Initializing freight calculator system v4.12 (Fix Port Insert - ID excluded).');
+    console.log('Initializing freight calculator system v4.16 (Textual Version Update).');
     await initializeDatabaseTables(); 
     await loadInitialDataFromJson(); // <--- Заменено на загрузку из JSON
     console.log('System initialization completed');
@@ -62,7 +62,7 @@ async function initializeSystem() {
   }
 }
 
-// --- Загрузка начальных данных из JSON (v4.12) ---
+// --- Загрузка начальных данных из JSON (v4.16 Textual Update) ---
 async function loadInitialDataFromJson() {
     console.log("Attempting to load initial data from extracted_data.json...");
     let client;
@@ -92,7 +92,7 @@ async function loadInitialDataFromJson() {
         let portCount = 0;
         for (const port of initialData.ports) {
             try {
-                // Modified Query v4.12: Exclude 'id' column completely
+                // Modified Query (originally v4.12 logic): Exclude 'id' column completely
                 await client.query(
                     `INSERT INTO ports (name, code, region, country, latitude, longitude)
                      VALUES ($1, $2, $3, $4, $5, $6)
@@ -163,7 +163,7 @@ async function loadInitialDataFromJson() {
     }
 }
 
-// --- Инициализация таблиц БД (v4.13: Добавлено DROP TABLE для ports) --- 
+// --- Инициализация таблиц БД (v4.16 Textual Update, logic from v4.13/v4.14) --- 
 async function initializeDatabaseTables() {
   console.log("Initializing database tables...");
   let client;
@@ -171,7 +171,7 @@ async function initializeDatabaseTables() {
     client = await pool.connect();
     await client.query("BEGIN");
 
-    // Таблица портов (v4.13: Принудительное удаление и пересоздание)
+    // Таблица портов (Logic from v4.13: Принудительное удаление и пересоздание)
     console.log("Dropping and recreating 'ports' table...");
     await client.query(`DROP TABLE IF EXISTS ports CASCADE;`); // Удаляем таблицу, если существует
     await client.query(`
@@ -188,7 +188,7 @@ async function initializeDatabaseTables() {
     console.log("'ports' table recreated successfully.");
     // Дополнительные ALTER TABLE для ports больше не нужны, т.к. таблица создается заново
 
-    // Таблица типов контейнеров (v4.14: Принудительное удаление и пересоздание с UNIQUE(name))
+    // Таблица типов контейнеров (Logic from v4.14: Принудительное удаление и пересоздание с UNIQUE(name))
     console.log("Dropping and recreating 'container_types' table...");
     await client.query(`DROP TABLE IF EXISTS container_types CASCADE;`); // Удаляем таблицу, если существует
     await client.query(`
@@ -660,10 +660,11 @@ app.delete('/api/admin/indices/:index_name', async (req, res) => {
     const { index_name } = req.params;
     try {
         const result = await pool.query('DELETE FROM index_config WHERE index_name = $1 RETURNING *;', [index_name]);
-        if (result.rowCount === 0) {
-            return res.status(404).json({ error: 'Index not found' });
+        if (result.rowCount > 0) {
+            res.json({ message: 'Index deleted successfully' });
+        } else {
+            res.status(404).json({ error: 'Index not found' });
         }
-        res.status(200).json({ message: 'Index deleted successfully' });
     } catch (err) {
         console.error('Error deleting index:', err);
         res.status(500).json({ error: 'Internal server error' });
@@ -674,66 +675,160 @@ app.delete('/api/admin/indices/:index_name', async (req, res) => {
 app.post('/api/admin/base-rates', async (req, res) => {
     const { origin_region, destination_region, container_type, rate } = req.body;
     if (!origin_region || !destination_region || !container_type || rate === undefined) {
-        return res.status(400).json({ error: 'Missing required fields: origin_region, destination_region, container_type, rate' });
+        return res.status(400).json({ error: 'Missing required fields' });
     }
-    const rateValue = parseFloat(rate);
-    if (isNaN(rateValue)) {
-        return res.status(400).json({ error: 'Invalid numeric value for rate.' });
+    const parsedRate = parseFloat(rate);
+    if (isNaN(parsedRate)) {
+        return res.status(400).json({ error: 'Invalid rate value' });
     }
 
-    let client;
     try {
-        client = await pool.connect();
-        // Проверяем существование container_type
-        const ctCheck = await client.query('SELECT 1 FROM container_types WHERE name = $1', [container_type]);
+        // Проверяем, существует ли такой тип контейнера
+        const ctCheck = await pool.query('SELECT 1 FROM container_types WHERE name = $1', [container_type]);
         if (ctCheck.rowCount === 0) {
-            return res.status(400).json({ error: `Invalid container_type: ${container_type} does not exist.` });
+            return res.status(400).json({ error: `Container type '${container_type}' does not exist.` });
         }
 
-        const result = await client.query(`
+        const result = await pool.query(`
             INSERT INTO base_rates (origin_region, destination_region, container_type, rate)
             VALUES ($1, $2, $3, $4)
             ON CONFLICT (origin_region, destination_region, container_type)
             DO UPDATE SET rate = EXCLUDED.rate
             RETURNING *;
-        `, [origin_region, destination_region, container_type, rateValue]);
+        `, [origin_region, destination_region, container_type, parsedRate]);
         res.status(201).json(result.rows[0]);
     } catch (err) {
         console.error('Error adding/updating base rate:', err);
         res.status(500).json({ error: 'Internal server error' });
-    } finally {
-        if (client) client.release();
     }
 });
 
 // Удалить Базовую ставку
 app.delete('/api/admin/base-rates/:id', async (req, res) => {
     const { id } = req.params;
-    if (isNaN(parseInt(id))) {
-         return res.status(400).json({ error: 'Invalid ID format.' });
-    }
     try {
         const result = await pool.query('DELETE FROM base_rates WHERE id = $1 RETURNING *;', [id]);
-        if (result.rowCount === 0) {
-            return res.status(404).json({ error: 'Base rate not found' });
+        if (result.rowCount > 0) {
+            res.json({ message: 'Base rate deleted successfully' });
+        } else {
+            res.status(404).json({ error: 'Base rate not found' });
         }
-        res.status(200).json({ message: 'Base rate deleted successfully' });
     } catch (err) {
         console.error('Error deleting base rate:', err);
         res.status(500).json({ error: 'Internal server error' });
     }
 });
 
+// Добавить/Обновить Порт (Добавлено в v4.9)
+app.post('/api/admin/ports', async (req, res) => {
+    const { name, code, region, country, latitude, longitude } = req.body;
+    if (!name) {
+        return res.status(400).json({ error: 'Missing required field: name' });
+    }
+    const lat = latitude !== undefined && latitude !== null && latitude !== '' ? parseFloat(latitude) : null;
+    const lon = longitude !== undefined && longitude !== null && longitude !== '' ? parseFloat(longitude) : null;
+
+    if ((latitude !== undefined && latitude !== null && latitude !== '' && isNaN(lat)) || 
+        (longitude !== undefined && longitude !== null && longitude !== '' && isNaN(lon))) {
+        return res.status(400).json({ error: 'Invalid numeric values for latitude or longitude.' });
+    }
+
+    try {
+        const result = await pool.query(`
+            INSERT INTO ports (name, code, region, country, latitude, longitude)
+            VALUES ($1, $2, $3, $4, $5, $6)
+            ON CONFLICT (name) 
+            DO UPDATE SET 
+                code = EXCLUDED.code,
+                region = EXCLUDED.region,
+                country = EXCLUDED.country,
+                latitude = EXCLUDED.latitude,
+                longitude = EXCLUDED.longitude
+            RETURNING *;
+        `, [name, code || null, region || null, country || null, lat, lon]);
+        res.status(201).json(result.rows[0]);
+    } catch (err) {
+        console.error('Error adding/updating port:', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// Удалить Порт (Добавлено в v4.9)
+app.delete('/api/admin/ports/:id', async (req, res) => {
+    const { id } = req.params;
+    try {
+        // Сначала проверим, не используется ли порт в базовых ставках или истории (если нужно)
+        // Для простоты пока просто удаляем
+        const result = await pool.query('DELETE FROM ports WHERE id = $1 RETURNING *;', [id]);
+        if (result.rowCount > 0) {
+            res.json({ message: 'Port deleted successfully' });
+        } else {
+            res.status(404).json({ error: 'Port not found' });
+        }
+    } catch (err) {
+        console.error('Error deleting port:', err);
+        // Проверка на FK constraint violation (если порт используется)
+        if (err.code === '23503') { // Код ошибки PostgreSQL для FK violation
+             return res.status(409).json({ error: 'Cannot delete port: It is referenced by other records (e.g., in base rates or calculation history).' });
+        }
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+
+// Добавить/Обновить Тип Контейнера (Добавлено в v4.9)
+app.post('/api/admin/container-types', async (req, res) => {
+    const { name, description } = req.body;
+    if (!name) {
+        return res.status(400).json({ error: 'Missing required field: name' });
+    }
+    try {
+        const result = await pool.query(`
+            INSERT INTO container_types (name, description)
+            VALUES ($1, $2)
+            ON CONFLICT (name) 
+            DO UPDATE SET description = EXCLUDED.description
+            RETURNING *;
+        `, [name, description || null]);
+        res.status(201).json(result.rows[0]);
+    } catch (err) {
+        console.error('Error adding/updating container type:', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// Удалить Тип Контейнера (Добавлено в v4.9)
+app.delete('/api/admin/container-types/:id', async (req, res) => {
+    const { id } = req.params;
+    try {
+        const result = await pool.query('DELETE FROM container_types WHERE id = $1 RETURNING *;', [id]);
+        if (result.rowCount > 0) {
+            res.json({ message: 'Container type deleted successfully' });
+        } else {
+            res.status(404).json({ error: 'Container type not found' });
+        }
+    } catch (err) {
+        console.error('Error deleting container type:', err);
+        if (err.code === '23503') { 
+             return res.status(409).json({ error: 'Cannot delete container type: It is referenced by other records (e.g., in base rates).' });
+        }
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
 
 // --- Запуск сервера --- 
+async function startServer() {
+  try {
+    await initializeSystem();
+    app.listen(PORT, () => {
+      console.log(`Server is running on port ${PORT}`);
+      console.log(`Admin panel should be available at http://localhost:${PORT}/admin.html (or your Render URL)`);
+    });
+  } catch (error) {
+    console.error("Failed to start the server:", error);
+    process.exit(1); // Выход, если инициализация не удалась
+  }
+}
 
-// Инициализируем систему перед запуском сервера
-initializeSystem().then(() => {
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server listening on port ${PORT}`);
-  });
-}).catch(error => {
-  console.error("Failed to initialize system. Server not started.", error);
-  process.exit(1); // Выход, если инициализация не удалась
-});
+startServer();
 
