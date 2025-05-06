@@ -1,4 +1,4 @@
-// Интеграционный модуль v4.20: Глобальный обработчик ошибок, исправление схемы БД и API.
+// Интеграционный модуль v4.21: Исправлена критическая ошибка конца файла и структура запуска.
 
 import express from 'express';
 import cors from 'cors';
@@ -52,7 +52,7 @@ app.get('/admin', (req, res) => {
 // --- Инициализация системы --- 
 async function initializeSystem() {
   try {
-    console.log('Initializing freight calculator system v4.20 (DB Schema & API Error Handling Fix).');
+    console.log('Initializing freight calculator system v4.21 (Critical EOF and Structure Fix).');
     await initializeDatabaseTables();
     await loadInitialDataFromJson(); // <--- Заменено на загрузку из JSON
     console.log('System initialization completed');
@@ -813,10 +813,7 @@ app.delete('/api/admin/container-types/:id', async (req, res) => {
     }
 });
 
-// --- Запуск сервера --- 
-async function startServer() {
-  try {
-    await// Глобальный обработчик ошибок (должен быть последним middleware)
+// Глобальный обработчик ошибок (должен быть последним middleware)
 app.use((err, req, res, next) => {
   console.error("[GLOBAL ERROR HANDLER]:", err.stack || err);
   // Если ошибка уже отправила ответ, ничего не делаем
