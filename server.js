@@ -1,4 +1,4 @@
-// Интеграционный модуль v4.22: Массовое исправление API для корректного JSON ответа и обработки ошибок.
+// Интеграционный модуль v4.23: Исправление синтаксиса и обновление версии.
 
 import express from 'express';
 import cors from 'cors';
@@ -52,7 +52,8 @@ app.get('/admin', (req, res) => {
 // --- Инициализация системы --- 
 async function initializeSystem() {
   try {
-    console.log(\'Initializing freight calculator system v4.22 (API JSON & Error Handling Fix).\');   await initializeDatabaseTables();
+     console.log('Initializing freight calculator system v4.23 (Syntax Fix & Version Update).');
+    await initializeDatabaseTables();
     await loadInitialDataFromJson(); // <--- Заменено на загрузку из JSON
     console.log('System initialization completed');
   } catch (error) {
@@ -61,7 +62,7 @@ async function initializeSystem() {
   }
 }
 
-// --- Загрузка начальных данных из JSON (v4.22 API JSON & Error Handling Fix) ---
+// --- Загрузка начальных данных из JSON (v4.23 Syntax Fix & Version Update) ---
 async function loadInitialDataFromJson() {
     console.log("Attempting to load initial data from extracted_data.json...");
     let client;
@@ -162,7 +163,7 @@ async function loadInitialDataFromJson() {
     }
 }
 
-// --- Инициализация таблиц БД (v4.22 API JSON & Error Handling Fix, logic from v4.13/v4.14) --- 
+// --- Инициализация таблиц БД (v4.23 Syntax Fix & Version Update, logic from v4.13/v4.14) --- 
 async function initializeDatabaseTables() {
   console.log("Initializing database tables...");
   let client;
