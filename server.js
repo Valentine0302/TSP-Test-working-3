@@ -1,4 +1,4 @@
-// Интеграционный модуль v4.26: Изолированный тест asyncHandler на одном маршруте.
+ // Интеграционный модуль v4.27: Диагностическое логирование.
 
 import express from 'express';
 import cors from 'cors';
@@ -9,7 +9,6 @@ import { fileURLToPath } from 'url';
 import multer from 'multer'; // Для обработки загрузки файлов
 import xlsx from 'xlsx'; // Для чтения Excel
 import fs from 'fs'; // Импортируем модуль fs для чтения файла
-// import initialData from './initial_data.js'; // Больше не нужно
 
 // Импорт модулей анализа и расчета
 import { initializeAndUpdateSeasonalityData, initializeSeasonalityTables, fetchSeasonalityFactor } from './seasonality_analyzer.js';
@@ -31,7 +30,6 @@ const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: {
     rejectUnauthorized: false,
-    // sslmode: 'require' // Раскомментируйте, если ваша БД требует SSL
   }
 });
 
@@ -52,47 +50,45 @@ app.get('/admin', (req, res) => {
 // --- Инициализация системы --- 
 async function initializeSystem() {
   try {
-     console.log("Initializing freight calculator system v4.26 (Isolated asyncHandler Test).");
+     console.log("Initializing freight calculator system v4.27 (Diagnostic Logging).");
     await initializeDatabaseTables();
-    await loadInitialDataFromJson(); // <--- Заменено на загрузку из JSON
-    console.log('System initialization completed');
+    await loadInitialDataFromJson(); 
+    console.log('System initialization completed for v4.27_diagnostic');
   } catch (error) {
-    console.error('Error initializing system:', error);
+    console.error('Error initializing system (v4.27_diagnostic):', error);
     throw error;
   }
 }
 
-// --- Загрузка начальных данных из JSON (v4.26 Isolated asyncHandler Test) ---
+// --- Загрузка начальных данных из JSON ---
 async function loadInitialDataFromJson() {
-    console.log("Attempting to load initial data from extracted_data.json...");
+    console.log("[v4.27_diagnostic] Attempting to load initial data from extracted_data.json...");
     let client;
     let initialData;
 
-    // Чтение и парсинг JSON файла
     try {
         const jsonFilePath = path.join(__dirname, 'extracted_data.json');
         const jsonData = fs.readFileSync(jsonFilePath, 'utf8');
         initialData = JSON.parse(jsonData);
-        console.log("Successfully loaded and parsed extracted_data.json");
+        console.log("[v4.27_diagnostic] Successfully loaded and parsed extracted_data.json");
     } catch (err) {
-        console.error("Fatal Error: Could not read or parse extracted_data.json. Cannot load initial data.", err);
-        throw new Error("Failed to load initial data from JSON file."); // Прерываем инициализацию, если файл не найден/невалиден
+        console.error("[v4.27_diagnostic] Fatal Error: Could not read or parse extracted_data.json. Cannot load initial data.", err);
+        throw new Error("Failed to load initial data from JSON file.");
     }
 
     if (!initialData || !initialData.ports || !initialData.container_types || !initialData.indices) {
-        console.error("Fatal Error: extracted_data.json is missing required keys (ports, container_types, indices).");
+        console.error("[v4.27_diagnostic] Fatal Error: extracted_data.json is missing required keys (ports, container_types, indices).");
         throw new Error("Invalid initial data structure in JSON file.");
     }
 
     try {
         client = await pool.connect();
+        console.log("[v4.27_diagnostic] Connected to DB for initial data load.");
 
-        // 1. Загрузка портов
-        console.log("Loading ports from JSON...");
+        console.log("[v4.27_diagnostic] Loading ports from JSON...");
         let portCount = 0;
         for (const port of initialData.ports) {
             try {
-                // Modified Query (originally v4.12 logic): Exclude 'id' column completely
                 await client.query(
                     `INSERT INTO ports (name, code, region, country, latitude, longitude)
                      VALUES ($1, $2, $3, $4, $5, $6)
@@ -101,14 +97,12 @@ async function loadInitialDataFromJson() {
                 );
                 portCount++;
             } catch (err) {
-                // Keep detailed logging
-                console.warn(`Error inserting port row: ${JSON.stringify(port)}, Error: ${err.message}`);
+                console.warn(`[v4.27_diagnostic] Error inserting port row: ${JSON.stringify(port)}, Error: ${err.message}`);
             }
         }
-        console.log(`Finished loading ports. ${portCount} rows processed.`);
+        console.log(`[v4.27_diagnostic] Finished loading ports. ${portCount} rows processed.`);
 
-        // 2. Загрузка типов контейнеров
-        console.log("Loading container types from JSON...");
+        console.log("[v4.27_diagnostic] Loading container types from JSON...");
         let ctCount = 0;
         for (const ct of initialData.container_types) {
             try {
@@ -120,18 +114,17 @@ async function loadInitialDataFromJson() {
                 );
                 ctCount++;
             } catch (err) {
-                console.warn(`Error inserting container type row: ${JSON.stringify(ct)}, Error: ${err.message}`);
+                console.warn(`[v4.27_diagnostic] Error inserting container type row: ${JSON.stringify(ct)}, Error: ${err.message}`);
             }
         }
-        console.log(`Finished loading container types. ${ctCount} rows processed.`);
+        console.log(`[v4.27_diagnostic] Finished loading container types. ${ctCount} rows processed.`);
 
-        // 3. Загрузка конфигурации индексов
-        console.log("Loading index config from JSON...");
+        console.log("[v4.27_diagnostic] Loading index config from JSON...");
         let icCount = 0;
         for (const index of initialData.indices) {
             try {
                 const baseline = parseFloat(index.baseline_value);
-                const weight = parseFloat(index.weight_percentage); // Вес уже в %, не нужно *100
+                const weight = parseFloat(index.weight_percentage);
                 const current = parseFloat(index.current_value);
                 if (index.index_name && !isNaN(baseline) && !isNaN(weight) && !isNaN(current) && weight >= 0 && weight <= 100) {
                     await client.query(
@@ -142,38 +135,34 @@ async function loadInitialDataFromJson() {
                     );
                     icCount++;
                 } else {
-                     console.warn(`Skipping invalid index config row: ${JSON.stringify(index)}`);
+                     console.warn(`[v4.27_diagnostic] Skipping invalid index config row: ${JSON.stringify(index)}`);
                 }
             } catch (err) {
-                console.warn(`Error inserting index config row: ${JSON.stringify(index)}, Error: ${err.message}`);
+                console.warn(`[v4.27_diagnostic] Error inserting index config row: ${JSON.stringify(index)}, Error: ${err.message}`);
             }
         }
-        console.log(`Finished loading index config. ${icCount} rows processed.`);
+        console.log(`[v4.27_diagnostic] Finished loading index config. ${icCount} rows processed.`);
         
-        // 4. Загрузка базовых ставок (ОСТАВЛЕНО ПУСТЫМ - загрузка через админку)
-        console.log("Skipping initial base rate loading. Base rates should be managed via admin panel.");
+        console.log("[v4.27_diagnostic] Skipping initial base rate loading. Base rates should be managed via admin panel.");
 
-        console.log("Initial data loading process completed.");
+        console.log("[v4.27_diagnostic] Initial data loading process completed.");
 
     } catch (error) {
-        console.error("Error loading initial data into database:", error);
-        // Не прерываем запуск сервера, но логируем ошибку
+        console.error("[v4.27_diagnostic] Error loading initial data into database:", error);
     } finally {
-        if (client) { client.release(); console.log("Database client released after initial data load."); }
+        if (client) { client.release(); console.log("[v4.27_diagnostic] Database client released after initial data load."); }
     }
 }
 
-// --- Инициализация таблиц БД (v4.26 Isolated asyncHandler Test, logic from v4.13/v4.14) --- 
 async function initializeDatabaseTables() {
-  console.log("Initializing database tables...");
+  console.log("[v4.27_diagnostic] Initializing database tables...");
   let client;
   try {
     client = await pool.connect();
     await client.query("BEGIN");
 
-    // Таблица портов (Logic from v4.13: Принудительное удаление и пересоздание)
-    console.log("Dropping and recreating 'ports' table...");
-    await client.query(`DROP TABLE IF EXISTS ports CASCADE;`); // Удаляем таблицу, если существует
+    console.log("[v4.27_diagnostic] Dropping and recreating 'ports' table...");
+    await client.query(`DROP TABLE IF EXISTS ports CASCADE;`);
     await client.query(`
       CREATE TABLE ports (
         id SERIAL PRIMARY KEY,
@@ -185,12 +174,10 @@ async function initializeDatabaseTables() {
         country VARCHAR(100)
       );
     `);
-    console.log("'ports' table recreated successfully.");
-    // Дополнительные ALTER TABLE для ports больше не нужны, т.к. таблица создается заново
+    console.log("[v4.27_diagnostic] 'ports' table recreated successfully.");
 
-    // Таблица типов контейнеров (Logic from v4.14: Принудительное удаление и пересоздание с UNIQUE(name))
-    console.log("Dropping and recreating 'container_types' table...");
-    await client.query(`DROP TABLE IF EXISTS container_types CASCADE;`); // Удаляем таблицу, если существует
+    console.log("[v4.27_diagnostic] Dropping and recreating 'container_types' table...");
+    await client.query(`DROP TABLE IF EXISTS container_types CASCADE;`);
     await client.query(`
       CREATE TABLE container_types (
         id SERIAL PRIMARY KEY,
@@ -198,10 +185,8 @@ async function initializeDatabaseTables() {
         description TEXT
       );
     `);
-    console.log("'container_types' table recreated successfully.");
-    // Дополнительные ALTER TABLE для container_types больше не нужны 
+    console.log("[v4.27_diagnostic] 'container_types' table recreated successfully.");
 
-    // Таблица базовых ставок (без изменений)
     await client.query(`
       CREATE TABLE IF NOT EXISTS base_rates (
         id SERIAL PRIMARY KEY, 
@@ -214,8 +199,8 @@ async function initializeDatabaseTables() {
       );
     `);
     await client.query(`ALTER TABLE base_rates ALTER COLUMN container_type TYPE VARCHAR(50);`);
+    console.log("[v4.27_diagnostic] 'base_rates' table ensured.");
 
-    // Таблица конфигурации индексов (без изменений)
     await client.query(`
       CREATE TABLE IF NOT EXISTS index_config (
         index_name VARCHAR(50) PRIMARY KEY,
@@ -225,8 +210,8 @@ async function initializeDatabaseTables() {
         last_updated TIMESTAMP
       );
     `);
+    console.log("[v4.27_diagnostic] 'index_config' table ensured.");
 
-    // Таблица настроек модели (без изменений)
     await client.query(`
       CREATE TABLE IF NOT EXISTS model_settings (
         setting_key VARCHAR(50) PRIMARY KEY,
@@ -238,9 +223,9 @@ async function initializeDatabaseTables() {
     await client.query(`INSERT INTO model_settings (setting_key, setting_value, description) VALUES 
       ('sensitivityCoeff', '0.5', 'Coefficient of sensitivity to index changes (0-1)')
       ON CONFLICT (setting_key) DO NOTHING;`);
+    console.log("[v4.27_diagnostic] 'model_settings' table ensured.");
 
-    // Таблица истории расчетов (v4.20: принудительное пересоздание для гарантии user_email и актуальной схемы)
-    console.log("Dropping and recreating 'calculation_history' table to ensure schema consistency...");
+    console.log("[v4.27_diagnostic] Dropping and recreating 'calculation_history' table...");
     await client.query(`DROP TABLE IF EXISTS calculation_history CASCADE;`);
     await client.query(`
       CREATE TABLE calculation_history (
@@ -257,32 +242,28 @@ async function initializeDatabaseTables() {
         index_values_used JSONB 
       );
     `);
-    console.log("'calculation_history' table recreated successfully with all columns.");
-    // Очистка старых столбцов, если они существовали
+    console.log("[v4.27_diagnostic] 'calculation_history' table recreated successfully.");
     await client.query(`ALTER TABLE calculation_history DROP COLUMN IF EXISTS origin_port;`);
     await client.query(`ALTER TABLE calculation_history DROP COLUMN IF EXISTS destination_port;`);
-    // Проверка типа столбца (хотя он уже задан в CREATE)
     await client.query(`ALTER TABLE calculation_history ALTER COLUMN container_type TYPE VARCHAR(50);`);
 
-    // Таблицы для анализа сезонности (без изменений)
     await initializeSeasonalityTables(client); 
+    console.log("[v4.27_diagnostic] Seasonality tables initialized via external module.");
 
     await client.query("COMMIT");
-    console.log("Database tables initialized/verified successfully.");
+    console.log("[v4.27_diagnostic] Database tables initialized/verified successfully.");
 
   } catch (error) {
-    console.error("Error during database transaction, attempting rollback...");
+    console.error("[v4.27_diagnostic] Error during database transaction, attempting rollback...");
     if (client) { 
-      try { await client.query("ROLLBACK"); console.log("Transaction rolled back."); } catch (rollbackError) { console.error("Rollback failed:", rollbackError); }
+      try { await client.query("ROLLBACK"); console.log("[v4.27_diagnostic] Transaction rolled back."); } catch (rollbackError) { console.error("[v4.27_diagnostic] Rollback failed:", rollbackError); }
     }
-    console.error("Error initializing database tables:", error);
+    console.error("[v4.27_diagnostic] Error initializing database tables:", error);
     throw error;
   } finally {
-    if (client) { client.release(); console.log("Database client released after table initialization."); }
+    if (client) { client.release(); console.log("[v4.27_diagnostic] Database client released after table initialization."); }
   }
 }
-
-// --- Вспомогательные функции (v4.26 Isolated asyncHandler Test) --- 
 
 const asyncHandler = fn => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 
@@ -291,131 +272,170 @@ function validateEmail(email) {
   return re.test(String(email).toLowerCase());
 }
 
-// Функция для загрузки конфигурации из БД (ВКЛЮЧАЯ current_value для индексов)
 async function loadCalculationConfigFromDB() {
+    console.log("[v4.27_diagnostic loadCalculationConfigFromDB] Attempting to load calculation config from DB.");
     let client;
     try {
         client = await pool.connect();
-        // 1. Загрузка базовых ставок
+        console.log("[v4.27_diagnostic loadCalculationConfigFromDB] DB connected.");
+
         const baseRatesResult = await client.query('SELECT origin_region, destination_region, container_type, rate FROM base_rates');
+        console.log(`[v4.27_diagnostic loadCalculationConfigFromDB] Fetched ${baseRatesResult.rowCount} base rates rows.`);
         const baseRatesConfig = {};
         baseRatesResult.rows.forEach(row => {
             if (!baseRatesConfig[row.origin_region]) baseRatesConfig[row.origin_region] = {};
             if (!baseRatesConfig[row.origin_region][row.destination_region]) baseRatesConfig[row.origin_region][row.destination_region] = {};
             baseRatesConfig[row.origin_region][row.destination_region][row.container_type] = parseFloat(row.rate);
         });
+        console.log("[v4.27_diagnostic loadCalculationConfigFromDB] Processed baseRatesConfig:", JSON.stringify(baseRatesConfig).substring(0, 500) + (JSON.stringify(baseRatesConfig).length > 500 ? "... (truncated)" : ""));
 
-        // 2. Загрузка конфигурации индексов (включая current_value)
         const indexConfigResult = await client.query('SELECT index_name, baseline_value, weight_percentage, current_value FROM index_config');
+        console.log(`[v4.27_diagnostic loadCalculationConfigFromDB] Fetched ${indexConfigResult.rowCount} index config rows.`);
         const indicesConfig = {};
         indexConfigResult.rows.forEach(row => {
             indicesConfig[row.index_name] = {
                 baseline: parseFloat(row.baseline_value),
-                weight: parseFloat(row.weight_percentage) / 100, // Конвертируем % в долю (0-1)
-                currentValue: parseFloat(row.current_value) // Используем сохраненное current_value
+                weight: parseFloat(row.weight_percentage) / 100, 
+                currentValue: parseFloat(row.current_value)
             };
         });
+        console.log("[v4.27_diagnostic loadCalculationConfigFromDB] Processed indicesConfig:", JSON.stringify(indicesConfig).substring(0, 500) + (JSON.stringify(indicesConfig).length > 500 ? "... (truncated)" : ""));
 
-        // 3. Загрузка настроек модели
         const settingsResult = await client.query('SELECT setting_key, setting_value FROM model_settings');
+        console.log(`[v4.27_diagnostic loadCalculationConfigFromDB] Fetched ${settingsResult.rowCount} model settings rows.`);
         const modelSettings = {};
         settingsResult.rows.forEach(row => {
-            modelSettings[row.setting_key] = parseFloat(row.setting_value); // Предполагаем, что все настройки числовые
+            modelSettings[row.setting_key] = parseFloat(row.setting_value);
         });
+        console.log("[v4.27_diagnostic loadCalculationConfigFromDB] Processed modelSettings:", modelSettings);
 
-        // 4. Загрузка типов контейнеров (для справки, если нужно)
         const containerTypesResult = await client.query('SELECT name, description FROM container_types');
         const containerTypes = containerTypesResult.rows;
+        console.log(`[v4.27_diagnostic loadCalculationConfigFromDB] Fetched ${containerTypes.length} container types.`);
 
         client.release();
+        console.log("[v4.27_diagnostic loadCalculationConfigFromDB] DB client released. Config loaded.");
         return { baseRatesConfig, indicesConfig, modelSettings, containerTypes };
 
     } catch (error) {
         if (client) client.release();
-        console.error('Error loading calculation config from DB:', error);
-        throw error; // Передаем ошибку дальше
+        console.error('[v4.27_diagnostic loadCalculationConfigFromDB] Error loading calculation config from DB:', error);
+        throw error;
     }
 }
 
-// --- API Эндпоинты --- 
-
-// Эндпоинт для расчета ставки (v4.26 Isolated asyncHandler Test)
 app.post("/api/calculate", asyncHandler(async (req, res, next) => {
+    console.log("[v4.27_diagnostic /api/calculate] Received request. Body:", JSON.stringify(req.body));
     const { originPort, destinationPort, containerType, weight, userEmail } = req.body;
 
-    // Валидация входных данных
     if (!originPort || !destinationPort || !containerType) {
+        console.error("[v4.27_diagnostic /api/calculate] Validation Error: Missing required fields.");
         return res.status(400).json({ error: 'Missing required fields: originPort, destinationPort, containerType' });
     }
     if (userEmail && !validateEmail(userEmail)) {
+        console.error("[v4.27_diagnostic /api/calculate] Validation Error: Invalid email format.");
         return res.status(400).json({ error: 'Invalid email format' });
     }
+    console.log("[v4.27_diagnostic /api/calculate] Inputs validated successfully.");
 
     let client;
     try {
         client = await pool.connect();
+        console.log("[v4.27_diagnostic /api/calculate] Connected to DB for calculation.");
 
-        // 1. Найти порты в БД по коду или имени (предпочтительно по коду, если он есть)
-        // Используем COALESCE для поиска по code, а если он null/пустой, то по name
+        console.log(`[v4.27_diagnostic /api/calculate] Fetching origin port data for: ${originPort}`);
         const originPortData = await client.query('SELECT * FROM ports WHERE COALESCE(code, name) = $1 LIMIT 1', [originPort]);
+        console.log("[v4.27_diagnostic /api/calculate] Origin port data from DB:", originPortData.rows);
+
+        console.log(`[v4.27_diagnostic /api/calculate] Fetching destination port data for: ${destinationPort}`);
         const destinationPortData = await client.query('SELECT * FROM ports WHERE COALESCE(code, name) = $1 LIMIT 1', [destinationPort]);
+        console.log("[v4.27_diagnostic /api/calculate] Destination port data from DB:", destinationPortData.rows);
 
         if (originPortData.rows.length === 0 || destinationPortData.rows.length === 0) {
+            console.error("[v4.27_diagnostic /api/calculate] Error: Origin or destination port not found in DB.");
+            if (client) client.release();
             return res.status(404).json({ error: 'Origin or destination port not found' });
         }
+        console.log("[v4.27_diagnostic /api/calculate] Ports found successfully.");
 
-        const origin = originPortData.rows[0];
-        const destination = destinationPortData.rows[0];
+        const originPortDb = originPortData.rows[0];
+        const destinationPortDb = destinationPortData.rows[0];
 
-        // 2. Загрузить актуальную конфигурацию расчета из БД
-        const { baseRatesConfig, indicesConfig, modelSettings } = await loadCalculationConfigFromDB();
+        console.log("[v4.27_diagnostic /api/calculate] Loading calculation config...");
+        const config = await loadCalculationConfigFromDB(); 
+        console.log("[v4.27_diagnostic /api/calculate] Calculation config loaded.");
 
-        // 3. Получить фактор сезонности
-        const seasonalityFactor = await fetchSeasonalityFactor(client, origin.region, destination.region, new Date());
+        const calculationParams = {
+            originPortId: originPortDb.id, 
+            destinationPortId: destinationPortDb.id, 
+            containerType,
+            baseRatesConfig: config.baseRatesConfig,
+            indexConfig: config.indicesConfig,
+            sensitivityCoeff: config.modelSettings?.sensitivityCoeff || 0.5, 
+            weight: weight ? parseFloat(weight) : undefined,
+            debugMode: true 
+        };
+        console.log("[v4.27_diagnostic /api/calculate] Calling calculateFreightRate with params:", JSON.stringify(calculationParams).substring(0,1000) + "...");
 
-        // 4. Рассчитать ставку
-        const calculatedRate = calculateFreightRate(
-            origin.region, 
-            destination.region, 
-            containerType, 
-            baseRatesConfig, 
-            indicesConfig, 
-            modelSettings.sensitivityCoeff || 0.5, // Значение по умолчанию, если не найдено
-            seasonalityFactor
+        const rateDetails = await calculateFreightRate(
+            calculationParams.originPortId,
+            calculationParams.destinationPortId,
+            calculationParams.containerType,
+            calculationParams.baseRatesConfig,
+            calculationParams.indexConfig,
+            calculationParams.sensitivityCoeff,
+            calculationParams.weight,
+            calculationParams.debugMode
         );
+        console.log("[v4.27_diagnostic /api/calculate] Result from calculateFreightRate:", JSON.stringify(rateDetails).substring(0,1000) + "...");
 
-        if (calculatedRate === null) {
-            return res.status(404).json({ error: 'Rate not available for the specified route and container type.' });
+        if (userEmail && rateDetails.finalRate !== -1) {
+            console.log("[v4.27_diagnostic /api/calculate] Saving request to history for user:", userEmail);
+            try {
+                await saveRequestToHistory(
+                    originPortDb.code || originPortDb.name, 
+                    destinationPortDb.code || destinationPortDb.name, 
+                    containerType, 
+                    weight, 
+                    rateDetails.finalRate, 
+                    userEmail, 
+                    originPortDb.id, 
+                    destinationPortDb.id,
+                    rateDetails.calculationDetails?.indexSources || [] 
+                );
+                console.log("[v4.27_diagnostic /api/calculate] Request saved to history successfully.");
+            } catch (historyError) {
+                console.error("[v4.27_diagnostic /api/calculate] Error saving to history:", historyError);
+            }
         }
 
-        // 5. Сохранить запрос в историю (если нужно)
-        if (userEmail) { // Сохраняем только если email предоставлен
-            await saveRequestToHistory(
-                client, 
-                origin.code || origin.name, // Используем code, если есть, иначе name
-                destination.code || destination.name, 
-                containerType, 
-                weight, // Добавляем вес
-                calculatedRate,
-                userEmail,
-                origin.id, // Добавляем ID портов
-                destination.id,
-                indicesConfig // Добавляем использованные значения индексов
-            );
-        }
-
-        // 6. Отправить результат
-        res.json({ rate: calculatedRate.toFixed(2) });
+        const responsePayload = {
+            rate: rateDetails.finalRate,
+            details: rateDetails.calculationDetails,
+            currency: 'USD', // Assuming USD, can be made dynamic later
+            debugLog: rateDetails.debugLog // Include full debug log from calculator
+        };
+        console.log("[v4.27_diagnostic /api/calculate] Sending response:", JSON.stringify(responsePayload).substring(0,500) + "...");
+        res.json(responsePayload);
 
     } catch (error) {
-        console.error('Error calculating freight rate:', error);
-        res.status(500).json({ error: `Failed to calculate rate: ${error.message}` });
+        console.error('[v4.27_diagnostic /api/calculate] Critical error in /api/calculate handler:', error);
+        // Ensure 'next' is called for Express error handling if not sending response directly
+        // However, since we are sending a JSON response for errors, next(error) might not be needed here
+        // if it's caught by asyncHandler and we want a JSON response.
+        // For now, let's send a generic error response.
+        if (!res.headersSent) {
+            res.status(500).json({ error: 'Internal server error during calculation', details: error.message });
+        }
     } finally {
-        if (client) client.release();
+        if (client) {
+            client.release();
+            console.log("[v4.27_diagnostic /api/calculate] DB client released.");
+        }
     }
 }));
 
-// --- API для Админ-панели --- 
+// --- Admin API Эндпоинты (ОСТАВЛЕНЫ БЕЗ ИЗМЕНЕНИЙ ОТ v4.26) --- 
 
 // Получить все порты
 app.get('/api/admin/ports', async (req, res) => {
@@ -423,10 +443,72 @@ app.get('/api/admin/ports', async (req, res) => {
         const result = await pool.query('SELECT id, name, code, region, country, latitude, longitude FROM ports ORDER BY name');
         res.json(result.rows);
     } catch (err) {
-        console.error('Error fetching ports:', err);
-        res.status(500).json({ error: 'Internal server error' });
+        console.error('Error fetching ports for admin:', err);
+        res.status(500).json({ error: 'Failed to fetch ports', details: err.message });
     }
 });
+
+// Добавить порт
+app.post('/api/admin/ports', async (req, res) => {
+    const { name, code, region, country, latitude, longitude } = req.body;
+    if (!name) {
+        return res.status(400).json({ error: 'Port name is required' });
+    }
+    try {
+        const result = await pool.query(
+            'INSERT INTO ports (name, code, region, country, latitude, longitude) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
+            [name, code || null, region || null, country || null, latitude || null, longitude || null]
+        );
+        res.status(201).json(result.rows[0]);
+    } catch (err) {
+        console.error('Error adding port for admin:', err);
+        if (err.code === '23505') { // unique_violation
+            return res.status(409).json({ error: 'Port with this name already exists', details: err.detail });
+        }
+        res.status(500).json({ error: 'Failed to add port', details: err.message });
+    }
+});
+
+// Обновить порт
+app.put('/api/admin/ports/:id', async (req, res) => {
+    const { id } = req.params;
+    const { name, code, region, country, latitude, longitude } = req.body;
+    if (!name) {
+        return res.status(400).json({ error: 'Port name is required' });
+    }
+    try {
+        const result = await pool.query(
+            'UPDATE ports SET name = $1, code = $2, region = $3, country = $4, latitude = $5, longitude = $6 WHERE id = $7 RETURNING *',
+            [name, code || null, region || null, country || null, latitude || null, longitude || null, id]
+        );
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Port not found' });
+        }
+        res.json(result.rows[0]);
+    } catch (err) {
+        console.error('Error updating port for admin:', err);
+         if (err.code === '23505') { 
+            return res.status(409).json({ error: 'Port with this name already exists', details: err.detail });
+        }
+        res.status(500).json({ error: 'Failed to update port', details: err.message });
+    }
+});
+
+// Удалить порт
+app.delete('/api/admin/ports/:id', async (req, res) => {
+    const { id } = req.params;
+    try {
+        const result = await pool.query('DELETE FROM ports WHERE id = $1 RETURNING *', [id]);
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Port not found' });
+        }
+        res.status(200).json({ message: 'Port deleted successfully' });
+    } catch (err) {
+        console.error('Error deleting port for admin:', err);
+        res.status(500).json({ error: 'Failed to delete port', details: err.message });
+    }
+});
+
 
 // Получить все типы контейнеров
 app.get('/api/admin/container-types', async (req, res) => {
@@ -434,408 +516,355 @@ app.get('/api/admin/container-types', async (req, res) => {
         const result = await pool.query('SELECT id, name, description FROM container_types ORDER BY name');
         res.json(result.rows);
     } catch (err) {
-        console.error('Error fetching container types:', err);
-        res.status(500).json({ error: 'Internal server error' });
+        console.error('Error fetching container types for admin:', err);
+        res.status(500).json({ error: 'Failed to fetch container types', details: err.message });
     }
 });
 
-// Получить конфигурацию индексов
-app.get('/api/admin/indices', async (req, res) => {
+// Добавить тип контейнера
+app.post('/api/admin/container-types', async (req, res) => {
+    const { name, description } = req.body;
+    if (!name) {
+        return res.status(400).json({ error: 'Container type name is required' });
+    }
     try {
-        const result = await pool.query('SELECT index_name, baseline_value, weight_percentage, current_value, last_updated FROM index_config ORDER BY index_name');
-        res.json(result.rows);
+        const result = await pool.query(
+            'INSERT INTO container_types (name, description) VALUES ($1, $2) RETURNING *',
+            [name, description || null]
+        );
+        res.status(201).json(result.rows[0]);
     } catch (err) {
-        console.error('Error fetching index config:', err);
-        res.status(500).json({ error: 'Internal server error' });
+        console.error('Error adding container type for admin:', err);
+        if (err.code === '23505') { // unique_violation
+            return res.status(409).json({ error: 'Container type with this name already exists', details: err.detail });
+        }
+        res.status(500).json({ error: 'Failed to add container type', details: err.message });
     }
 });
 
-// Получить базовые ставки
+// Обновить тип контейнера
+app.put('/api/admin/container-types/:id', async (req, res) => {
+    const { id } = req.params;
+    const { name, description } = req.body;
+     if (!name) {
+        return res.status(400).json({ error: 'Container type name is required' });
+    }
+    try {
+        const result = await pool.query(
+            'UPDATE container_types SET name = $1, description = $2 WHERE id = $3 RETURNING *',
+            [name, description || null, id]
+        );
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Container type not found' });
+        }
+        res.json(result.rows[0]);
+    } catch (err) {
+        console.error('Error updating container type for admin:', err);
+        if (err.code === '23505') { 
+            return res.status(409).json({ error: 'Container type with this name already exists', details: err.detail });
+        }
+        res.status(500).json({ error: 'Failed to update container type', details: err.message });
+    }
+});
+
+// Удалить тип контейнера
+app.delete('/api/admin/container-types/:id', async (req, res) => {
+    const { id } = req.params;
+    try {
+        const result = await pool.query('DELETE FROM container_types WHERE id = $1 RETURNING *', [id]);
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Container type not found' });
+        }
+        res.status(200).json({ message: 'Container type deleted successfully' });
+    } catch (err) {
+        console.error('Error deleting container type for admin:', err);
+        // Check for foreign key constraint violation (e.g., if used in base_rates)
+        if (err.code === '23503') { // foreign_key_violation
+             return res.status(409).json({ error: 'Cannot delete container type. It is currently referenced in base rates.', details: err.detail });
+        }
+        res.status(500).json({ error: 'Failed to delete container type', details: err.message });
+    }
+});
+
+// Получить все базовые ставки
 app.get('/api/admin/base-rates', async (req, res) => {
     try {
         const result = await pool.query('SELECT id, origin_region, destination_region, container_type, rate FROM base_rates ORDER BY origin_region, destination_region, container_type');
         res.json(result.rows);
     } catch (err) {
-        console.error('Error fetching base rates:', err);
-        res.status(500).json({ error: 'Internal server error' });
+        console.error('Error fetching base rates for admin:', err);
+        res.status(500).json({ error: 'Failed to fetch base rates', details: err.message });
     }
 });
 
-// Получить историю расчетов
-app.get('/api/admin/history', async (req, res) => {
-    try {
-        // Добавим LEFT JOIN для получения имен портов
-        const result = await pool.query(`
-            SELECT 
-                h.id, h.timestamp, h.origin_port_code, h.destination_port_code, 
-                h.container_type, h.weight, h.calculated_rate, h.user_email, 
-                h.index_values_used,
-                po.name as origin_port_name, 
-                pd.name as destination_port_name
-            FROM calculation_history h
-            LEFT JOIN ports po ON h.origin_port_code = COALESCE(po.code, po.name)
-            LEFT JOIN ports pd ON h.destination_port_code = COALESCE(pd.code, pd.name)
-            ORDER BY h.timestamp DESC
-            LIMIT 100; -- Ограничим вывод для производительности
-        `);
-        res.json(result.rows);
-    } catch (err) {
-        console.error('Error fetching calculation history:', err);
-        res.status(500).json({ error: 'Internal server error' });
+// Добавить/Обновить базовую ставку (UPSERT)
+app.post('/api/admin/base-rates', async (req, res) => {
+    const { origin_region, destination_region, container_type, rate } = req.body;
+    if (!origin_region || !destination_region || !container_type || rate === undefined) {
+        return res.status(400).json({ error: 'All fields (origin_region, destination_region, container_type, rate) are required' });
     }
-});
-
-// --- Загрузка данных через Админ-панель --- 
-
-// Загрузка Excel файла с индексами
-app.post('/api/admin/indices/upload', upload.single('indicesFile'), async (req, res) => {
-    if (!req.file) {
-        return res.status(400).json({ error: 'No file uploaded.' });
+    if (isNaN(parseFloat(rate)) || parseFloat(rate) < 0) {
+        return res.status(400).json({ error: 'Rate must be a non-negative number.' });
     }
 
-    let client;
     try {
-        const workbook = xlsx.read(req.file.buffer, { type: 'buffer' });
-        const sheetName = workbook.SheetNames[0]; // Предполагаем, что данные на первом листе
-        const worksheet = workbook.Sheets[sheetName];
-        const data = xlsx.utils.sheet_to_json(worksheet);
-
-        client = await pool.connect();
-        await client.query('BEGIN');
-
-        let updatedCount = 0;
-        let insertedCount = 0;
-
-        for (const row of data) {
-            const indexName = row['Index Name'] || row['index_name'];
-            const baselineValue = parseFloat(row['Baseline Value'] || row['baseline_value']);
-            const weightPercentage = parseFloat(row['Weight (%)'] || row['weight_percentage']) * 100; // Преобразуем 0.xx в xx
-            const currentValue = parseFloat(row['Current Value'] || row['current_value']);
-
-            if (indexName && !isNaN(baselineValue) && !isNaN(weightPercentage) && weightPercentage >= 0 && weightPercentage <= 100) {
-                // currentValue может быть null/undefined/0, это нормально, если не указан
-                const currentValToInsert = !isNaN(currentValue) ? currentValue : null;
-
-                const result = await client.query(`
-                    INSERT INTO index_config (index_name, baseline_value, weight_percentage, current_value, last_updated)
-                    VALUES ($1, $2, $3, $4, NOW())
-                    ON CONFLICT (index_name)
-                    DO UPDATE SET 
-                        baseline_value = EXCLUDED.baseline_value,
-                        weight_percentage = EXCLUDED.weight_percentage,
-                        current_value = COALESCE(EXCLUDED.current_value, index_config.current_value), -- Обновляем current_value только если оно не null в файле
-                        last_updated = NOW()
-                    RETURNING xmax; -- xmax = 0 для INSERT, > 0 для UPDATE
-                `, [indexName, baselineValue, weightPercentage, currentValToInsert]);
-                
-                if (result.rows.length > 0) {
-                    if (result.rows[0].xmax === 0) {
-                        insertedCount++;
-                    } else {
-                        updatedCount++;
-                    }
-                }
-            } else {
-                console.warn(`Skipping invalid row during index upload: ${JSON.stringify(row)}`);
-            }
+        // Check if container_type exists
+        const ctExists = await pool.query('SELECT 1 FROM container_types WHERE name = $1', [container_type]);
+        if (ctExists.rows.length === 0) {
+            return res.status(400).json({ error: `Container type '${container_type}' does not exist. Please add it first.` });
         }
 
-        await client.query('COMMIT');
-        res.json({ message: `Indices uploaded successfully. Inserted: ${insertedCount}, Updated: ${updatedCount}.` });
-
-    } catch (error) {
-        if (client) { try { await client.query('ROLLBACK'); } catch (rbErr) { console.error('Rollback failed:', rbErr); } }
-        console.error('Error uploading indices:', error);
-        res.status(500).json({ error: `Failed to upload indices: ${error.message}` });
-    } finally {
-        if (client) client.release();
+        const result = await pool.query(
+            `INSERT INTO base_rates (origin_region, destination_region, container_type, rate)
+             VALUES ($1, $2, $3, $4)
+             ON CONFLICT (origin_region, destination_region, container_type) 
+             DO UPDATE SET rate = EXCLUDED.rate
+             RETURNING *`,
+            [origin_region, destination_region, container_type, parseFloat(rate)]
+        );
+        res.status(201).json(result.rows[0]);
+    } catch (err) {
+        console.error('Error upserting base rate for admin:', err);
+        res.status(500).json({ error: 'Failed to upsert base rate', details: err.message });
     }
 });
 
-// Загрузка Excel файла с базовыми ставками
-app.post('/api/admin/base-rates/upload', upload.single('baseRatesFile'), async (req, res) => {
+// Удалить базовую ставку
+app.delete('/api/admin/base-rates', async (req, res) => {
+    const { origin_region, destination_region, container_type } = req.body;
+     if (!origin_region || !destination_region || !container_type) {
+        return res.status(400).json({ error: 'All fields (origin_region, destination_region, container_type) are required for deletion' });
+    }
+    try {
+        const result = await pool.query(
+            'DELETE FROM base_rates WHERE origin_region = $1 AND destination_region = $2 AND container_type = $3 RETURNING *',
+            [origin_region, destination_region, container_type]
+        );
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Base rate not found for the given criteria' });
+        }
+        res.status(200).json({ message: 'Base rate deleted successfully' });
+    } catch (err) {
+        console.error('Error deleting base rate for admin:', err);
+        res.status(500).json({ error: 'Failed to delete base rate', details: err.message });
+    }
+});
+
+// Получить конфигурацию индексов
+app.get('/api/admin/index-config', async (req, res) => {
+    try {
+        const result = await pool.query('SELECT index_name, baseline_value, weight_percentage, current_value, last_updated FROM index_config ORDER BY index_name');
+        res.json(result.rows);
+    } catch (err) {
+        console.error('Error fetching index config for admin:', err);
+        res.status(500).json({ error: 'Failed to fetch index config', details: err.message });
+    }
+});
+
+// Обновить/Добавить конфигурацию индекса (UPSERT)
+app.post('/api/admin/index-config', async (req, res) => {
+    const { index_name, baseline_value, weight_percentage, current_value } = req.body;
+    if (!index_name || baseline_value === undefined || weight_percentage === undefined) {
+        return res.status(400).json({ error: 'Fields index_name, baseline_value, weight_percentage are required' });
+    }
+    const bl_val = parseFloat(baseline_value);
+    const w_perc = parseFloat(weight_percentage);
+    const cur_val = current_value !== undefined ? parseFloat(current_value) : null;
+
+    if (isNaN(bl_val) || bl_val <= 0) {
+        return res.status(400).json({ error: 'Baseline value must be a positive number.'});
+    }
+    if (isNaN(w_perc) || w_perc < 0 || w_perc > 100) {
+        return res.status(400).json({ error: 'Weight percentage must be between 0 and 100.'});
+    }
+    if (current_value !== undefined && (cur_val === null || isNaN(cur_val) || cur_val <=0)) {
+         return res.status(400).json({ error: 'Current value, if provided, must be a positive number.'});
+    }
+
+    try {
+        const result = await pool.query(
+            `INSERT INTO index_config (index_name, baseline_value, weight_percentage, current_value, last_updated)
+             VALUES ($1, $2, $3, $4, NOW())
+             ON CONFLICT (index_name) 
+             DO UPDATE SET baseline_value = EXCLUDED.baseline_value, 
+                           weight_percentage = EXCLUDED.weight_percentage, 
+                           current_value = EXCLUDED.current_value, 
+                           last_updated = NOW()
+             RETURNING *`,
+            [index_name, bl_val, w_perc, cur_val]
+        );
+        res.status(201).json(result.rows[0]);
+    } catch (err) {
+        console.error('Error upserting index config for admin:', err);
+        res.status(500).json({ error: 'Failed to upsert index config', details: err.message });
+    }
+});
+
+// Удалить конфигурацию индекса
+app.delete('/api/admin/index-config/:index_name', async (req, res) => {
+    const { index_name } = req.params;
+    try {
+        const result = await pool.query('DELETE FROM index_config WHERE index_name = $1 RETURNING *', [index_name]);
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Index config not found' });
+        }
+        res.status(200).json({ message: 'Index config deleted successfully' });
+    } catch (err) {
+        console.error('Error deleting index config for admin:', err);
+        res.status(500).json({ error: 'Failed to delete index config', details: err.message });
+    }
+});
+
+// Получить настройки модели
+app.get('/api/admin/model-settings', async (req, res) => {
+    try {
+        const result = await pool.query('SELECT setting_key, setting_value, description FROM model_settings');
+        res.json(result.rows);
+    } catch (err) {
+        console.error('Error fetching model settings for admin:', err);
+        res.status(500).json({ error: 'Failed to fetch model settings', details: err.message });
+    }
+});
+
+// Обновить/Добавить настройку модели (UPSERT)
+app.post('/api/admin/model-settings', async (req, res) => {
+    const { setting_key, setting_value, description } = req.body;
+    if (!setting_key || !setting_value) {
+        return res.status(400).json({ error: 'Fields setting_key and setting_value are required' });
+    }
+    // Add validation for specific keys if needed, e.g., sensitivityCoeff between 0 and 1
+    if (setting_key === 'sensitivityCoeff') {
+        const val = parseFloat(setting_value);
+        if (isNaN(val) || val < 0 || val > 1) {
+            return res.status(400).json({ error: 'sensitivityCoeff must be a number between 0 and 1.' });
+        }
+    }
+    try {
+        const result = await pool.query(
+            `INSERT INTO model_settings (setting_key, setting_value, description)
+             VALUES ($1, $2, $3)
+             ON CONFLICT (setting_key) 
+             DO UPDATE SET setting_value = EXCLUDED.setting_value, description = EXCLUDED.description
+             RETURNING *`,
+            [setting_key, setting_value, description || null]
+        );
+        res.status(201).json(result.rows[0]);
+    } catch (err) {
+        console.error('Error upserting model setting for admin:', err);
+        res.status(500).json({ error: 'Failed to upsert model setting', details: err.message });
+    }
+});
+
+// Загрузка данных из Excel (для базовых ставок)
+app.post('/api/admin/upload-excel/base-rates', upload.single('excelFile'), async (req, res) => {
     if (!req.file) {
-        return res.status(400).json({ error: 'No file uploaded.' });
+        return res.status(400).send('No file uploaded.');
     }
 
     let client;
     try {
+        console.log("[v4.27_diagnostic /api/admin/upload-excel/base-rates] File upload request received.");
         const workbook = xlsx.read(req.file.buffer, { type: 'buffer' });
         const sheetName = workbook.SheetNames[0];
         const worksheet = workbook.Sheets[sheetName];
         const data = xlsx.utils.sheet_to_json(worksheet);
 
+        if (data.length === 0) {
+            return res.status(400).send('Excel file is empty or has an invalid format.');
+        }
+
+        // Validate headers
+        const expectedHeaders = ['origin_region', 'destination_region', 'container_type', 'rate'];
+        const actualHeaders = Object.keys(data[0]);
+        const missingHeaders = expectedHeaders.filter(h => !actualHeaders.includes(h));
+        if (missingHeaders.length > 0) {
+            return res.status(400).send(`Missing required headers in Excel: ${missingHeaders.join(', ')}`);
+        }
+
         client = await pool.connect();
         await client.query('BEGIN');
-
-        // Получаем актуальный список типов контейнеров для проверки FK
-        const validContainerTypesResult = await client.query('SELECT name FROM container_types');
-        const validContainerTypes = new Set(validContainerTypesResult.rows.map(r => r.name));
-
-        let updatedCount = 0;
-        let insertedCount = 0;
+        let successCount = 0;
+        let errorCount = 0;
+        const errors = [];
 
         for (const row of data) {
-            const originRegion = row['Origin Region'] || row['origin_region'];
-            const destinationRegion = row['Destination Region'] || row['destination_region'];
-            const containerType = row['Container Type'] || row['container_type'];
-            const rate = parseFloat(row['Rate'] || row['rate']);
+            const { origin_region, destination_region, container_type, rate } = row;
+            if (!origin_region || !destination_region || !container_type || rate === undefined || rate === null) {
+                errorCount++;
+                errors.push(`Skipped row due to missing data: ${JSON.stringify(row)}`);
+                continue;
+            }
+            const parsedRate = parseFloat(rate);
+            if (isNaN(parsedRate) || parsedRate < 0) {
+                errorCount++;
+                errors.push(`Skipped row due to invalid rate '${rate}': ${JSON.stringify(row)}`);
+                continue;
+            }
+            
+            // Check if container_type exists
+            const ctExists = await client.query('SELECT 1 FROM container_types WHERE name = $1', [container_type]);
+            if (ctExists.rows.length === 0) {
+                 errorCount++;
+                 errors.push(`Skipped row: Container type '${container_type}' does not exist. Row: ${JSON.stringify(row)}`);
+                 continue;
+            }
 
-            if (originRegion && destinationRegion && containerType && !isNaN(rate)) {
-                // Проверяем FK перед вставкой/обновлением
-                if (validContainerTypes.has(containerType)) {
-                    const result = await client.query(`
-                        INSERT INTO base_rates (origin_region, destination_region, container_type, rate)
-                        VALUES ($1, $2, $3, $4)
-                        ON CONFLICT (origin_region, destination_region, container_type)
-                        DO UPDATE SET rate = EXCLUDED.rate
-                        RETURNING xmax; -- xmax = 0 для INSERT, > 0 для UPDATE
-                    `, [originRegion, destinationRegion, containerType, rate]);
-
-                    if (result.rows.length > 0) {
-                        if (result.rows[0].xmax === 0) {
-                            insertedCount++;
-                        } else {
-                            updatedCount++;
-                        }
-                    }
-                } else {
-                    console.warn(`Skipping base rate row due to non-existent container type '${containerType}': ${JSON.stringify(row)}`);
-                }
-            } else {
-                console.warn(`Skipping invalid row during base rate upload: ${JSON.stringify(row)}`);
+            try {
+                await client.query(
+                    `INSERT INTO base_rates (origin_region, destination_region, container_type, rate)
+                     VALUES ($1, $2, $3, $4)
+                     ON CONFLICT (origin_region, destination_region, container_type) 
+                     DO UPDATE SET rate = EXCLUDED.rate`,
+                    [origin_region, destination_region, container_type, parsedRate]
+                );
+                successCount++;
+            } catch (dbError) {
+                errorCount++;
+                errors.push(`DB error for row ${JSON.stringify(row)}: ${dbError.message}`);
             }
         }
 
         await client.query('COMMIT');
-        res.json({ message: `Base rates uploaded successfully. Inserted: ${insertedCount}, Updated: ${updatedCount}.` });
+        console.log(`[v4.27_diagnostic /api/admin/upload-excel/base-rates] Excel import complete. Success: ${successCount}, Errors: ${errorCount}`);
+        res.status(200).json({
+            message: `Import completed. Successfully processed: ${successCount}. Failed: ${errorCount}.`,
+            errors: errors
+        });
 
-    } catch (error) {
-        if (client) { try { await client.query('ROLLBACK'); } catch (rbErr) { console.error('Rollback failed:', rbErr); } }
-        console.error('Error uploading base rates:', error);
-        res.status(500).json({ error: `Failed to upload base rates: ${error.message}` });
+    } catch (err) {
+        if (client) await client.query('ROLLBACK');
+        console.error('[v4.27_diagnostic /api/admin/upload-excel/base-rates] Error processing Excel file for base rates:', err);
+        res.status(500).send('Error processing Excel file: ' + err.message);
     } finally {
         if (client) client.release();
     }
 });
 
-// --- CRUD операции для Админ-панели (Добавлено/Обновлено в v4.7/v4.9) --- 
-
-// Добавить/Обновить Индекс
-app.post('/api/admin/indices', async (req, res) => {
-    const { index_name, baseline_value, weight_percentage, current_value } = req.body;
-    if (!index_name || baseline_value === undefined || weight_percentage === undefined) {
-        return res.status(400).json({ error: 'Missing required fields: index_name, baseline_value, weight_percentage' });
-    }
-    const baseline = parseFloat(baseline_value);
-    const weight = parseFloat(weight_percentage);
-    const current = current_value !== undefined && current_value !== null ? parseFloat(current_value) : null;
-
-    if (isNaN(baseline) || isNaN(weight) || weight < 0 || weight > 100 || (current !== null && isNaN(current))) {
-        return res.status(400).json({ error: 'Invalid numeric values for baseline, weight (0-100), or current value.' });
-    }
-
+// Эндпоинт для инициализации и обновления данных сезонности (если нужно вызвать вручную)
+app.post('/api/admin/update-seasonality', async (req, res) => {
     try {
-        const result = await pool.query(`
-            INSERT INTO index_config (index_name, baseline_value, weight_percentage, current_value, last_updated)
-            VALUES ($1, $2, $3, $4, NOW())
-            ON CONFLICT (index_name)
-            DO UPDATE SET 
-                baseline_value = EXCLUDED.baseline_value,
-                weight_percentage = EXCLUDED.weight_percentage,
-                current_value = EXCLUDED.current_value,
-                last_updated = NOW()
-            RETURNING *;
-        `, [index_name, baseline, weight, current]);
-        res.status(201).json(result.rows[0]);
-    } catch (err) {
-        console.error('Error adding/updating index:', err);
-        res.status(500).json({ error: 'Internal server error' });
+        console.log("[v4.27_diagnostic /api/admin/update-seasonality] Request to update seasonality data.");
+        await initializeAndUpdateSeasonalityData(pool); // Передаем пул в функцию
+        res.status(200).json({ message: 'Seasonality data update process initiated successfully.' });
+    } catch (error) {
+        console.error('[v4.27_diagnostic /api/admin/update-seasonality] Error initiating seasonality update:', error);
+        res.status(500).json({ error: 'Failed to initiate seasonality update', details: error.message });
     }
 });
 
-// Удалить Индекс
-app.delete('/api/admin/indices/:index_name', async (req, res) => {
-    const { index_name } = req.params;
-    try {
-        const result = await pool.query('DELETE FROM index_config WHERE index_name = $1 RETURNING *;', [index_name]);
-        if (result.rowCount > 0) {
-            res.json({ message: 'Index deleted successfully' });
-        } else {
-            res.status(404).json({ error: 'Index not found' });
-        }
-    } catch (err) {
-        console.error('Error deleting index:', err);
-        res.status(500).json({ error: 'Internal server error' });
-    }
-});
-
-// Добавить/Обновить Базовую ставку
-app.post('/api/admin/base-rates', async (req, res) => {
-    const { origin_region, destination_region, container_type, rate } = req.body;
-    if (!origin_region || !destination_region || !container_type || rate === undefined) {
-        return res.status(400).json({ error: 'Missing required fields' });
-    }
-    const parsedRate = parseFloat(rate);
-    if (isNaN(parsedRate)) {
-        return res.status(400).json({ error: 'Invalid rate value' });
-    }
-
-    try {
-        // Проверяем, существует ли такой тип контейнера
-        const ctCheck = await pool.query('SELECT 1 FROM container_types WHERE name = $1', [container_type]);
-        if (ctCheck.rowCount === 0) {
-            return res.status(400).json({ error: `Container type '${container_type}' does not exist.` });
-        }
-
-        const result = await pool.query(`
-            INSERT INTO base_rates (origin_region, destination_region, container_type, rate)
-            VALUES ($1, $2, $3, $4)
-            ON CONFLICT (origin_region, destination_region, container_type)
-            DO UPDATE SET rate = EXCLUDED.rate
-            RETURNING *;
-        `, [origin_region, destination_region, container_type, parsedRate]);
-        res.status(201).json(result.rows[0]);
-    } catch (err) {
-        console.error('Error adding/updating base rate:', err);
-        res.status(500).json({ error: 'Internal server error' });
-    }
-});
-
-// Удалить Базовую ставку
-app.delete('/api/admin/base-rates/:id', async (req, res) => {
-    const { id } = req.params;
-    try {
-        const result = await pool.query('DELETE FROM base_rates WHERE id = $1 RETURNING *;', [id]);
-        if (result.rowCount > 0) {
-            res.json({ message: 'Base rate deleted successfully' });
-        } else {
-            res.status(404).json({ error: 'Base rate not found' });
-        }
-    } catch (err) {
-        console.error('Error deleting base rate:', err);
-        res.status(500).json({ error: 'Internal server error' });
-    }
-});
-
-// Добавить/Обновить Порт (Добавлено в v4.9)
-app.post('/api/admin/ports', async (req, res) => {
-    const { name, code, region, country, latitude, longitude } = req.body;
-    if (!name) {
-        return res.status(400).json({ error: 'Missing required field: name' });
-    }
-    const lat = latitude !== undefined && latitude !== null && latitude !== '' ? parseFloat(latitude) : null;
-    const lon = longitude !== undefined && longitude !== null && longitude !== '' ? parseFloat(longitude) : null;
-
-    if ((latitude !== undefined && latitude !== null && latitude !== '' && isNaN(lat)) || 
-        (longitude !== undefined && longitude !== null && longitude !== '' && isNaN(lon))) {
-        return res.status(400).json({ error: 'Invalid numeric values for latitude or longitude.' });
-    }
-
-    try {
-        const result = await pool.query(`
-            INSERT INTO ports (name, code, region, country, latitude, longitude)
-            VALUES ($1, $2, $3, $4, $5, $6)
-            ON CONFLICT (name) 
-            DO UPDATE SET 
-                code = EXCLUDED.code,
-                region = EXCLUDED.region,
-                country = EXCLUDED.country,
-                latitude = EXCLUDED.latitude,
-                longitude = EXCLUDED.longitude
-            RETURNING *;
-        `, [name, code || null, region || null, country || null, lat, lon]);
-        res.status(201).json(result.rows[0]);
-    } catch (err) {
-        console.error('Error adding/updating port:', err);
-        res.status(500).json({ error: 'Internal server error' });
-    }
-});
-
-// Удалить Порт (Добавлено в v4.9)
-app.delete('/api/admin/ports/:id', async (req, res) => {
-    const { id } = req.params;
-    try {
-        // Сначала проверим, не используется ли порт в базовых ставках или истории (если нужно)
-        // Для простоты пока просто удаляем
-        const result = await pool.query('DELETE FROM ports WHERE id = $1 RETURNING *;', [id]);
-        if (result.rowCount > 0) {
-            res.json({ message: 'Port deleted successfully' });
-        } else {
-            res.status(404).json({ error: 'Port not found' });
-        }
-    } catch (err) {
-        console.error('Error deleting port:', err);
-        // Проверка на FK constraint violation (если порт используется)
-        if (err.code === '23503') { // Код ошибки PostgreSQL для FK violation
-             return res.status(409).json({ error: 'Cannot delete port: It is referenced by other records (e.g., in base rates or calculation history).' });
-        }
-        res.status(500).json({ error: 'Internal server error' });
-    }
-});
-
-
-// Добавить/Обновить Тип Контейнера (Добавлено в v4.9)
-app.post('/api/admin/container-types', async (req, res) => {
-    const { name, description } = req.body;
-    if (!name) {
-        return res.status(400).json({ error: 'Missing required field: name' });
-    }
-    try {
-        const result = await pool.query(`
-            INSERT INTO container_types (name, description)
-            VALUES ($1, $2)
-            ON CONFLICT (name) 
-            DO UPDATE SET description = EXCLUDED.description
-            RETURNING *;
-        `, [name, description || null]);
-        res.status(201).json(result.rows[0]);
-    } catch (err) {
-        console.error('Error adding/updating container type:', err);
-        res.status(500).json({ error: 'Internal server error' });
-    }
-});
-
-// Удалить Тип Контейнера (Добавлено в v4.9)
-app.delete('/api/admin/container-types/:id', async (req, res) => {
-    const { id } = req.params;
-    try {
-        const result = await pool.query('DELETE FROM container_types WHERE id = $1 RETURNING *;', [id]);
-        if (result.rowCount > 0) {
-            res.json({ message: 'Container type deleted successfully' });
-        } else {
-            res.status(404).json({ error: 'Container type not found' });
-        }
-    } catch (err) {
-        console.error('Error deleting container type:', err);
-        if (err.code === '23503') { 
-             return res.status(409).json({ error: 'Cannot delete container type: It is referenced by other records (e.g., in base rates).' });
-        }
-        res.status(500).json({ error: 'Internal server error' });
-    }
-});
-
-// Глобальный обработчик ошибок (должен быть последним middleware)
-app.use((err, req, res, next) => {
-  console.error("[GLOBAL ERROR HANDLER]:", err.stack || err);
-  // Если ошибка уже отправила ответ, ничего не делаем
-  if (res.headersSent) {
-    return next(err);
+// --- Запуск сервера --- 
+async function startServer() {
+  try {
+    await initializeSystem();
+    app.listen(PORT, () => {
+      console.log(`Server v4.27 (Diagnostic Logging) is running on port ${PORT}`);
+      console.log(`Admin panel should be accessible at /admin.html (if deployed)`);
+    });
+  } catch (error) {
+    console.error("Failed to start server (v4.27_diagnostic):", error);
+    process.exit(1); // Выход, если инициализация не удалась
   }
-  // Отправляем JSON ответ об ошибке
-  res.status(err.status || 500).json({
-    error: err.message || "An unexpected error occurred.",
-    ...(process.env.NODE_ENV === "development" && { stack: err.stack }) // Включаем стек только в разработке
-  });
-});
+}
 
-// Запуск сервера
-initializeSystem().then(() => {
-  app.listen(PORT, () => {
-    console.log(`Server is running on port ${PORT}`);
-    console.log(`Admin panel should be available at http://localhost:${PORT}/admin.html (or your Render URL)`);
-  });
-}).catch(error => {
-  console.error("Failed to initialize system. Server not started.", error);
-  process.exit(1); // Завершаем процесс, если инициализация не удалась
-});
+startServer();
+
