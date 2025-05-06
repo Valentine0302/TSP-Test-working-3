@@ -1,4 +1,4 @@
-// Интеграционный модуль v4.19: Исправлена структура блока try-catch и обновлена версия.
+// Интеграционный модуль v4.20: Глобальный обработчик ошибок, исправление схемы БД и API.
 
 import express from 'express';
 import cors from 'cors';
@@ -52,7 +52,7 @@ app.get('/admin', (req, res) => {
 // --- Инициализация системы --- 
 async function initializeSystem() {
   try {
-    console.log('Initializing freight calculator system v4.19 (Structure Fix and Version Update).');
+    console.log('Initializing freight calculator system v4.20 (DB Schema & API Error Handling Fix).');
     await initializeDatabaseTables();
     await loadInitialDataFromJson(); // <--- Заменено на загрузку из JSON
     console.log('System initialization completed');
@@ -62,7 +62,7 @@ async function initializeSystem() {
   }
 }
 
-// --- Загрузка начальных данных из JSON (v4.19 Structure Fix and Version Update) ---
+// --- Загрузка начальных данных из JSON (v4.20 DB Schema & API Error Handling Fix) ---
 async function loadInitialDataFromJson() {
     console.log("Attempting to load initial data from extracted_data.json...");
     let client;
@@ -163,7 +163,7 @@ async function loadInitialDataFromJson() {
     }
 }
 
-// --- Инициализация таблиц БД (v4.19 Structure Fix and Version Update, logic from v4.13/v4.14) --- 
+// --- Инициализация таблиц БД (v4.20 DB Schema & API Error Handling Fix, logic from v4.13/v4.14) --- 
 async function initializeDatabaseTables() {
   console.log("Initializing database tables...");
   let client;
@@ -239,9 +239,11 @@ async function initializeDatabaseTables() {
       ('sensitivityCoeff', '0.5', 'Coefficient of sensitivity to index changes (0-1)')
       ON CONFLICT (setting_key) DO NOTHING;`);
 
-    // Таблица истории расчетов (без изменений)
+    // Таблица истории расчетов (v4.20: принудительное пересоздание для гарантии user_email и актуальной схемы)
+    console.log("Dropping and recreating 'calculation_history' table to ensure schema consistency...");
+    await client.query(`DROP TABLE IF EXISTS calculation_history CASCADE;`);
     await client.query(`
-      CREATE TABLE IF NOT EXISTS calculation_history (
+      CREATE TABLE calculation_history (
         id SERIAL PRIMARY KEY,
         timestamp TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
         origin_port_code VARCHAR(10), 
@@ -255,16 +257,11 @@ async function initializeDatabaseTables() {
         index_values_used JSONB 
       );
     `);
-    // Добавление/проверка столбцов для calculation_history (без изменений)
-    await client.query(`ALTER TABLE calculation_history ADD COLUMN IF NOT EXISTS origin_port_id INT;`);
-    await client.query(`ALTER TABLE calculation_history ADD COLUMN IF NOT EXISTS destination_port_id INT;`);
-    await client.query(`ALTER TABLE calculation_history ADD COLUMN IF NOT EXISTS weight NUMERIC;`);
-    await client.query(`ALTER TABLE calculation_history ADD COLUMN IF NOT EXISTS index_values_used JSONB;`);
+    console.log("'calculation_history' table recreated successfully with all columns.");
+    // Очистка старых столбцов, если они существовали
     await client.query(`ALTER TABLE calculation_history DROP COLUMN IF EXISTS origin_port;`);
     await client.query(`ALTER TABLE calculation_history DROP COLUMN IF EXISTS destination_port;`);
-    await client.query(`ALTER TABLE calculation_history ADD COLUMN IF NOT EXISTS origin_port_code VARCHAR(10);`);
-    await client.query(`ALTER TABLE calculation_history ADD COLUMN IF NOT EXISTS destination_port_code VARCHAR(10);`);
-    await client.query(`ALTER TABLE calculation_history ADD COLUMN IF NOT EXISTS calculated_rate NUMERIC;`);
+    // Проверка типа столбца (хотя он уже задан в CREATE)
     await client.query(`ALTER TABLE calculation_history ALTER COLUMN container_type TYPE VARCHAR(50);`);
 
     // Таблицы для анализа сезонности (без изменений)
@@ -819,16 +816,27 @@ app.delete('/api/admin/container-types/:id', async (req, res) => {
 // --- Запуск сервера --- 
 async function startServer() {
   try {
-    await initializeSystem();
-    app.listen(PORT, () => {
-      console.log(`Server is running on port ${PORT}`);
-      console.log(`Admin panel should be available at http://localhost:${PORT}/admin.html (or your Render URL)`);
-    });
-  } catch (error) {
-    console.error("Failed to start the server:", error);
-    process.exit(1); // Выход, если инициализация не удалась
+    await// Глобальный обработчик ошибок (должен быть последним middleware)
+app.use((err, req, res, next) => {
+  console.error("[GLOBAL ERROR HANDLER]:", err.stack || err);
+  // Если ошибка уже отправила ответ, ничего не делаем
+  if (res.headersSent) {
+    return next(err);
   }
-}
+  // Отправляем JSON ответ об ошибке
+  res.status(err.status || 500).json({
+    error: err.message || "An unexpected error occurred.",
+    ...(process.env.NODE_ENV === "development" && { stack: err.stack }) // Включаем стек только в разработке
+  });
+});
 
-startServer();
-
+// Запуск сервера
+initializeSystem().then(() => {
+  app.listen(PORT, () => {
+    console.log(`Server is running on port ${PORT}`);
+    console.log(`Admin panel should be available at http://localhost:${PORT}/admin.html (or your Render URL)`);
+  });
+}).catch(error => {
+  console.error("Failed to initialize system. Server not started.", error);
+  process.exit(1); // Завершаем процесс, если инициализация не удалась
+});
