@@ -850,7 +850,7 @@
         // --- History --- 
         async function fetchHistory() {
             try {
-                const history = await fetchData("admin/history");
+                const history = await fetchData("admin/calculation-history");
                 const tableBody = document.getElementById('history-table-body');
                 tableBody.innerHTML = ''; // Clear existing data
                 history.forEach(entry => {
