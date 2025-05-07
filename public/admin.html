@@ -632,7 +632,7 @@
         // --- Indices --- 
         async function fetchIndices() {
             try {
-                const indices = await fetchData("admin/indices");
+                const indices = await fetchData("admin/index-config");
                 const tableBody = document.getElementById('indices-table-body');
                 tableBody.innerHTML = ''; // Clear existing data
                 indices.forEach(index => {
