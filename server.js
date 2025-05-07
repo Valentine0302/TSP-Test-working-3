@@ -321,7 +321,7 @@ async function loadCalculationConfigFromDB() {
 }
 
 // --- API Маршруты для Публичного Калькулятора ---
-app.get("/api/public/ports", asyncHandler(async (req, res) => {
+app.get("/api/ports", asyncHandler(async (req, res) => {
     console.log("[v4.34_filepath_fix /api/public/ports GET] Request received.");
     const client = await pool.connect();
     try {
@@ -334,7 +334,7 @@ app.get("/api/public/ports", asyncHandler(async (req, res) => {
     }
 }));
 
-app.get("/api/public/container-types", asyncHandler(async (req, res) => {
+app.get("/api/container-types", asyncHandler(async (req, res) => {
     console.log("[v4.34_filepath_fix /api/public/container-types GET] Request received.");
     const client = await pool.connect();
     try {
@@ -366,8 +366,8 @@ app.post("/api/calculate", asyncHandler(async (req, res) => {
         console.log("[v4.34_filepath_fix /api/calculate POST] Connected to DB for calculation.");
 
         // Получаем ID портов
-        const originPortResult = await client.query('SELECT id, name, region FROM ports WHERE name = $1', [originPort]);
-        const destinationPortResult = await client.query('SELECT id, name, region FROM ports WHERE name = $1', [destinationPort]);
+        const originPortResult = await client.query("SELECT id, name, region FROM ports WHERE id = $1", [originPort]);
+        const destinationPortResult = await client.query("SELECT id, name, region FROM ports WHERE id = $1", [destinationPort]);
 
         if (originPortResult.rows.length === 0 || destinationPortResult.rows.length === 0) {
             console.log("[v4.34_filepath_fix /api/calculate POST] Origin or destination port not found.");
