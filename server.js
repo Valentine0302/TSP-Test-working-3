@@ -1,4 +1,5 @@
-// Интеграционный модуль v4.34: Исправлен путь к файлу данных на относительный.
+// server_v4.45_auto_migrate.js
+// Интеграционный модуль v4.45: Автоматическая миграция БД при запуске.
 
 import express from 'express';
 import cors from 'cors';
@@ -50,41 +51,211 @@ app.get('/admin', (req, res) => {
 // --- Вспомогательная функция для обработки асинхронных маршрутов ---
 const asyncHandler = fn => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 
-// --- Инициализация системы --- 
-async function initializeSystem() {
+// --- Функция автоматической миграции базы данных ---
+async function autoMigrateDatabase() {
+    console.log('[v4.45 Auto-Migration] Начало автоматической миграции базы данных...');
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+
+        // Проверка и переименование столбца Container_Type_ID в container_type_id в base_rates
+        const baseRatesColumns = await client.query(
+            `SELECT column_name FROM information_schema.columns 
+             WHERE table_schema = 'public' AND table_name = 'base_rates' AND column_name = 'Container_Type_ID';`
+        );
+        if (baseRatesColumns.rows.length > 0) {
+            const checkLowercaseColumnBaseRates = await client.query(
+                `SELECT column_name FROM information_schema.columns 
+                 WHERE table_schema = 'public' AND table_name = 'base_rates' AND column_name = 'container_type_id';`
+            );
+            if (checkLowercaseColumnBaseRates.rows.length === 0) {
+                console.log('[v4.45 Auto-Migration] Обнаружен столбец "Container_Type_ID" в таблице "base_rates". Переименование в "container_type_id"...');
+                await client.query('ALTER TABLE base_rates RENAME COLUMN "Container_Type_ID" TO container_type_id;');
+                console.log('[v4.45 Auto-Migration] Столбец "Container_Type_ID" в "base_rates" успешно переименован в "container_type_id".');
+            } else {
+                 console.log('[v4.45 Auto-Migration] Столбец "container_type_id" уже существует в "base_rates". Переименование "Container_Type_ID" не требуется или уже выполнено.');
+            }
+        } else {
+            console.log('[v4.45 Auto-Migration] Столбец "Container_Type_ID" не найден в "base_rates". Проверка на "container_type_id"...');
+            // Дополнительно убедимся, что столбец container_type_id существует, если Container_Type_ID не найден
+            const checkLowercaseColumnBaseRates = await client.query(
+                `SELECT column_name FROM information_schema.columns 
+                 WHERE table_schema = 'public' AND table_name = 'base_rates' AND column_name = 'container_type_id';`
+            );
+            if (checkLowercaseColumnBaseRates.rows.length === 0) {
+                 console.warn('[v4.45 Auto-Migration] ВНИМАНИЕ: Ни "Container_Type_ID", ни "container_type_id" не найдены в "base_rates". Таблица может быть не в ожидаемом состоянии или будет создана позже.');
+            } else {
+                 console.log('[v4.45 Auto-Migration] Столбец "container_type_id" уже существует в "base_rates".');
+            }
+        }
+
+        // Проверка и переименование столбца Container_Type_ID в container_type_id в calculation_history
+        const calcHistoryColumns = await client.query(
+            `SELECT column_name FROM information_schema.columns 
+             WHERE table_schema = 'public' AND table_name = 'calculation_history' AND column_name = 'Container_Type_ID';`
+        );
+        if (calcHistoryColumns.rows.length > 0) {
+            const checkLowercaseColumnCalcHistory = await client.query(
+                `SELECT column_name FROM information_schema.columns 
+                 WHERE table_schema = 'public' AND table_name = 'calculation_history' AND column_name = 'container_type_id';`
+            );
+            if (checkLowercaseColumnCalcHistory.rows.length === 0) {
+                console.log('[v4.45 Auto-Migration] Обнаружен столбец "Container_Type_ID" в таблице "calculation_history". Переименование в "container_type_id"...');
+                await client.query('ALTER TABLE calculation_history RENAME COLUMN "Container_Type_ID" TO container_type_id;');
+                console.log('[v4.45 Auto-Migration] Столбец "Container_Type_ID" в "calculation_history" успешно переименован в "container_type_id".');
+            } else {
+                console.log('[v4.45 Auto-Migration] Столбец "container_type_id" уже существует в "calculation_history". Переименование "Container_Type_ID" не требуется или уже выполнено.');
+            }
+        } else {
+            console.log('[v4.45 Auto-Migration] Столбец "Container_Type_ID" не найден в "calculation_history". Проверка на "container_type_id"...');
+            // Дополнительно убедимся, что столбец container_type_id существует
+            const checkLowercaseColumnCalcHistory = await client.query(
+                `SELECT column_name FROM information_schema.columns 
+                 WHERE table_schema = 'public' AND table_name = 'calculation_history' AND column_name = 'container_type_id';`
+            );
+            if (checkLowercaseColumnCalcHistory.rows.length === 0) {
+                console.warn('[v4.45 Auto-Migration] ВНИМАНИЕ: Ни "Container_Type_ID", ни "container_type_id" не найдены в "calculation_history". Таблица может быть не в ожидаемом состоянии или будет создана позже.');
+            } else {
+                console.log('[v4.45 Auto-Migration] Столбец "container_type_id" уже существует в "calculation_history".');
+            }
+        }
+        
+        // Этот блок не создает таблицы, он только переименовывает столбцы.
+        // Создание таблиц происходит в initializeDatabaseTables().
+        console.log("[v4.45 Auto-Migration] Проверка и переименование столбцов завершены.");
+
+        await client.query('COMMIT');
+        console.log('[v4.45 Auto-Migration] Автоматическая миграция базы данных успешно завершена (или не требовалась).');
+
+    } catch (error) {
+        console.error('[v4.45 Auto-Migration] Ошибка во время автоматической миграции базы данных, попытка отката...');
+        if (client) {
+            try { await client.query('ROLLBACK'); console.log("[v4.45 Auto-Migration] Транзакция откатана."); } 
+            catch (rollbackError) { console.error("[v4.45 Auto-Migration] Ошибка отката транзакции:", rollbackError); }
+        }
+        console.error('[v4.45 Auto-Migration] Ошибка автоматической миграции:', error);
+        throw error; // Передаем ошибку дальше, чтобы предотвратить запуск сервера при неудачной миграции
+    } finally {
+        if (client) { client.release(); console.log('[v4.45 Auto-Migration] Соединение с базой данных закрыто после миграции.'); }
+    }
+}
+
+
+// --- Инициализация таблиц базы данных (без изменений из v4.44) ---
+async function initializeDatabaseTables() {
+  console.log("[v4.45] Initializing database tables...");
+  let client;
   try {
-     console.log("Initializing freight calculator system v4.44 (Complete Fix).");
-    await initializeDatabaseTables();
-    await loadInitialDataFromJson('./extracted_data.json'); 
-    console.log("System initialization completed for v4.44 (Complete Fix).");
+    client = await pool.connect();
+    await client.query("BEGIN");
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS ports (
+        id SERIAL PRIMARY KEY,
+        name VARCHAR(255) UNIQUE NOT NULL, 
+        code VARCHAR(20), 
+        region VARCHAR(100),
+        latitude NUMERIC,
+        longitude NUMERIC,
+        country VARCHAR(100)
+      );
+    `);
+    console.log("[v4.45] 'ports' table ensured.");
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS container_types (
+        id SERIAL PRIMARY KEY,
+        name VARCHAR(50) UNIQUE NOT NULL, 
+        description TEXT
+      );
+    `);
+    console.log("[v4.45] 'container_types' table ensured.");
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS base_rates (
+        id SERIAL PRIMARY KEY, 
+        origin_region VARCHAR(100) NOT NULL,
+        destination_region VARCHAR(100) NOT NULL,
+        container_type_id INT NOT NULL, 
+        rate NUMERIC NOT NULL,
+        UNIQUE(origin_region, destination_region, container_type_id),
+        FOREIGN KEY (container_type_id) REFERENCES container_types(id)
+      );
+    `);
+    console.log("[v4.45] 'base_rates' table ensured (with container_type_id).");
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS index_config (
+        index_name VARCHAR(50) PRIMARY KEY,
+        baseline_value NUMERIC NOT NULL,
+        weight_percentage NUMERIC NOT NULL CHECK (weight_percentage >= 0 AND weight_percentage <= 100),
+        current_value NUMERIC,
+        last_updated TIMESTAMP
+      );
+    `);
+    console.log("[v4.45] 'index_config' table ensured.");
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS model_settings (
+        setting_key VARCHAR(50) PRIMARY KEY,
+        setting_value TEXT NOT NULL,
+        description TEXT
+      );
+    `);
+    await client.query(`INSERT INTO model_settings (setting_key, setting_value, description) VALUES 
+      ('sensitivityCoeff', '0.5', 'Coefficient of sensitivity to index changes (0-1)')
+      ON CONFLICT (setting_key) DO NOTHING;`);
+    console.log("[v4.45] 'model_settings' table ensured.");
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS calculation_history (
+        id SERIAL PRIMARY KEY,
+        timestamp TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+        origin_port_id INT, 
+        destination_port_id INT, 
+        container_type_id INT, 
+        weight NUMERIC,
+        calculated_rate NUMERIC, 
+        user_email VARCHAR(255),
+        index_values_used JSONB, 
+        FOREIGN KEY (origin_port_id) REFERENCES ports(id) ON DELETE SET NULL, 
+        FOREIGN KEY (destination_port_id) REFERENCES ports(id) ON DELETE SET NULL,
+        FOREIGN KEY (container_type_id) REFERENCES container_types(id) ON DELETE SET NULL
+      );
+    `);
+    console.log("[v4.45] 'calculation_history' table ensured (with container_type_id).");
+    await initializeSeasonalityTables(client); 
+    console.log("[v4.45] Seasonality tables initialized via external module.");
+    await client.query("COMMIT");
+    console.log("[v4.45] Database tables initialized/verified successfully.");
   } catch (error) {
-    console.error("Error initializing system v4.44 (Complete Fix):", error);
-    throw error; 
+    console.error("[v4.45] Error during database transaction, attempting rollback...");
+    if (client) { 
+      try { await client.query("ROLLBACK"); console.log("[v4.45] Transaction rolled back."); } catch (rollbackError) { console.error("[v4.45] Rollback failed:", rollbackError); }
+    }
+    console.error("[v4.45] Error initializing database tables:", error);
+    throw error;
+  } finally {
+    if (client) { client.release(); console.log("[v4.45] Database client released after table initialization."); }
   }
 }
 
-// --- Загрузка начальных данных из JSON ---
+// --- Загрузка начальных данных из JSON (без изменений из v4.44) ---
 async function loadInitialDataFromJson(jsonFilePathParam) {
-    console.log(`[v4.44] Attempting to load initial data from ${jsonFilePathParam}...`);
+    console.log(`[v4.45] Attempting to load initial data from ${jsonFilePathParam}...`);
     let client;
     let initialData;
     try {
         const jsonFilePath = path.isAbsolute(jsonFilePathParam) ? jsonFilePathParam : path.join(__dirname, jsonFilePathParam);
         const jsonData = fs.readFileSync(jsonFilePath, 'utf8');
         initialData = JSON.parse(jsonData);
-        console.log(`[v4.44] Successfully loaded and parsed ${jsonFilePath}`);
+        console.log(`[v4.45] Successfully loaded and parsed ${jsonFilePath}`);
     } catch (err) {
-        console.error(`[v4.44] Fatal Error: Could not read or parse ${jsonFilePathParam}. Ensure '${path.basename(jsonFilePathParam)}' is in the root directory. Error:`, err);
+        console.error(`[v4.45] Fatal Error: Could not read or parse ${jsonFilePathParam}. Ensure '${path.basename(jsonFilePathParam)}' is in the root directory. Error:`, err);
         throw new Error("Failed to load initial data from JSON file.");
     }
     if (!initialData || !initialData.ports || !initialData.container_types || !initialData.indices) {
-        console.error("[v4.44] Fatal Error: JSON data is missing required keys (ports, container_types, indices).");
+        console.error("[v4.45] Fatal Error: JSON data is missing required keys (ports, container_types, indices).");
         throw new Error("Invalid initial data structure in JSON file.");
     }
     try {
         client = await pool.connect();
-        console.log("[v4.44] Connected to DB for initial data load.");
-        console.log("[v4.44] Loading ports from JSON...");
+        console.log("[v4.45] Connected to DB for initial data load.");
+        console.log("[v4.45] Loading ports from JSON...");
         let portCount = 0;
         for (const port of initialData.ports) {
             try {
@@ -101,11 +272,11 @@ async function loadInitialDataFromJson(jsonFilePathParam) {
                 );
                 portCount++;
             } catch (err) {
-                console.warn(`[v4.44] Error inserting/updating port row: ${JSON.stringify(port)}, Error: ${err.message}`);
+                console.warn(`[v4.45] Error inserting/updating port row: ${JSON.stringify(port)}, Error: ${err.message}`);
             }
         }
-        console.log(`[v4.44] Finished loading/updating ports. ${portCount} rows processed.`);
-        console.log("[v4.44] Loading container types from JSON...");
+        console.log(`[v4.45] Finished loading/updating ports. ${portCount} rows processed.`);
+        console.log("[v4.45] Loading container types from JSON...");
         let ctCount = 0;
         for (const ct of initialData.container_types) {
             try {
@@ -117,11 +288,11 @@ async function loadInitialDataFromJson(jsonFilePathParam) {
                 );
                 ctCount++;
             } catch (err) {
-                console.warn(`[v4.44] Error inserting/updating container type row: ${JSON.stringify(ct)}, Error: ${err.message}`);
+                console.warn(`[v4.45] Error inserting/updating container type row: ${JSON.stringify(ct)}, Error: ${err.message}`);
             }
         }
-        console.log(`[v4.44] Finished loading/updating container types. ${ctCount} rows processed.`);
-        console.log("[v4.44] Loading index config from JSON...");
+        console.log(`[v4.45] Finished loading/updating container types. ${ctCount} rows processed.`);
+        console.log("[v4.45] Loading index config from JSON...");
         let icCount = 0;
         for (const index of initialData.indices) {
             try {
@@ -141,111 +312,38 @@ async function loadInitialDataFromJson(jsonFilePathParam) {
                     );
                     icCount++;
                 } else {
-                     console.warn(`[v4.44] Skipping invalid index config row: ${JSON.stringify(index)}`);
+                     console.warn(`[v4.45] Skipping invalid index config row: ${JSON.stringify(index)}`);
                 }
             } catch (err) {
-                console.warn(`[v4.44] Error inserting/updating index config row: ${JSON.stringify(index)}, Error: ${err.message}`);
+                console.warn(`[v4.45] Error inserting/updating index config row: ${JSON.stringify(index)}, Error: ${err.message}`);
             }
         }
-        console.log(`[v4.44] Finished loading/updating index config. ${icCount} rows processed.`);
-        console.log("[v4.44] Initial base rates are managed via admin panel. Skipping loading from JSON.");
-        console.log("[v4.44] Initial data loading process completed.");
+        console.log(`[v4.45] Finished loading/updating index config. ${icCount} rows processed.`);
+        console.log("[v4.45] Initial base rates are managed via admin panel. Skipping loading from JSON.");
+        console.log("[v4.45] Initial data loading process completed.");
     } catch (error) {
-        console.error("[v4.44] Error loading initial data into database:", error);
+        console.error("[v4.45] Error loading initial data into database:", error);
     } finally {
-        if (client) { client.release(); console.log("[v4.44] Database client released after initial data load."); }
+        if (client) { client.release(); console.log("[v4.45] Database client released after initial data load."); }
     }
 }
 
-async function initializeDatabaseTables() {
-  console.log("[v4.44] Initializing database tables...");
-  let client;
+// --- Инициализация системы (обновленная для включения автомиграции) ---
+async function initializeSystem() {
   try {
-    client = await pool.connect();
-    await client.query("BEGIN");
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS ports (
-        id SERIAL PRIMARY KEY,
-        name VARCHAR(255) UNIQUE NOT NULL, 
-        code VARCHAR(20), 
-        region VARCHAR(100),
-        latitude NUMERIC,
-        longitude NUMERIC,
-        country VARCHAR(100)
-      );
-    `);
-    console.log("[v4.44] 'ports' table ensured.");
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS container_types (
-        id SERIAL PRIMARY KEY,
-        name VARCHAR(50) UNIQUE NOT NULL, 
-        description TEXT
-      );
-    `);
-    console.log("[v4.44] 'container_types' table ensured.");
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS base_rates (
-        id SERIAL PRIMARY KEY, 
-        origin_region VARCHAR(100) NOT NULL,
-        destination_region VARCHAR(100) NOT NULL,
-        container_type_id INT NOT NULL, 
-        rate NUMERIC NOT NULL,
-        UNIQUE(origin_region, destination_region, container_type_id),
-        FOREIGN KEY (container_type_id) REFERENCES container_types(id)
-      );
-    `);
-    console.log("[v4.44] 'base_rates' table ensured.");
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS index_config (
-        index_name VARCHAR(50) PRIMARY KEY,
-        baseline_value NUMERIC NOT NULL,
-        weight_percentage NUMERIC NOT NULL CHECK (weight_percentage >= 0 AND weight_percentage <= 100),
-        current_value NUMERIC,
-        last_updated TIMESTAMP
-      );
-    `);
-    console.log("[v4.44] 'index_config' table ensured.");
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS model_settings (
-        setting_key VARCHAR(50) PRIMARY KEY,
-        setting_value TEXT NOT NULL,
-        description TEXT
-      );
-    `);
-    await client.query(`INSERT INTO model_settings (setting_key, setting_value, description) VALUES 
-      ('sensitivityCoeff', '0.5', 'Coefficient of sensitivity to index changes (0-1)')
-      ON CONFLICT (setting_key) DO NOTHING;`);
-    console.log("[v4.44] 'model_settings' table ensured.");
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS calculation_history (
-        id SERIAL PRIMARY KEY,
-        timestamp TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-        origin_port_id INT, 
-        destination_port_id INT, 
-        container_type_id INT, 
-        weight NUMERIC,
-        calculated_rate NUMERIC, 
-        user_email VARCHAR(255),
-        index_values_used JSONB, 
-        FOREIGN KEY (origin_port_id) REFERENCES ports(id) ON DELETE SET NULL, 
-        FOREIGN KEY (destination_port_id) REFERENCES ports(id) ON DELETE SET NULL,
-        FOREIGN KEY (container_type_id) REFERENCES container_types(id) ON DELETE SET NULL
-      );
-    `);
-    console.log("[v4.44] 'calculation_history' table ensured.");
-    await initializeSeasonalityTables(client); 
-    console.log("[v4.44] Seasonality tables initialized via external module.");
-    await client.query("COMMIT");
-    console.log("[v4.44] Database tables initialized/verified successfully.");
+    console.log("Initializing freight calculator system v4.45 (Auto-Migration).");
+    // Шаг 1: Выполнить автоматическую миграцию
+    await autoMigrateDatabase(); 
+    // Шаг 2: Инициализировать/проверить таблицы (это также создаст их, если они не существуют)
+    await initializeDatabaseTables();
+    // Шаг 3: Загрузить начальные данные
+    await loadInitialDataFromJson('./extracted_data.json'); 
+    console.log("System initialization completed for v4.45 (Auto-Migration).");
   } catch (error) {
-    console.error("[v4.44] Error during database transaction, attempting rollback...");
-    if (client) { 
-      try { await client.query("ROLLBACK"); console.log("[v4.44] Transaction rolled back."); } catch (rollbackError) { console.error("[v4.44] Rollback failed:", rollbackError); }
-    }
-    console.error("[v4.44] Error initializing database tables:", error);
-    throw error;
-  } finally {
-    if (client) { client.release(); console.log("[v4.44] Database client released after table initialization."); }
+    console.error("Error initializing system v4.45 (Auto-Migration):", error);
+    // Важно: если инициализация не удалась, сервер не должен запускаться
+    // или должен завершить работу, чтобы избежать работы в некорректном состоянии.
+    process.exit(1); 
   }
 }
 
@@ -255,7 +353,7 @@ function validateEmail(email) {
 }
 
 async function loadCalculationConfigFromDB() {
-    console.log("[v4.44 loadCalculationConfigFromDB] Attempting to load calculation config from DB.");
+    console.log("[v4.45 loadCalculationConfigFromDB] Attempting to load calculation config from DB.");
     let client;
     try {
         client = await pool.connect();
@@ -285,7 +383,7 @@ async function loadCalculationConfigFromDB() {
         
         return { baseRatesConfig, indicesConfig, modelSettings, containerTypes };
     } catch (error) {
-        console.error("[v4.44 loadCalculationConfigFromDB] Error loading calculation config from DB:", error);
+        console.error("[v4.45 loadCalculationConfigFromDB] Error loading calculation config from DB:", error);
         throw error;
     } finally {
         if (client) client.release();
@@ -294,125 +392,111 @@ async function loadCalculationConfigFromDB() {
 
 // --- API Маршруты для Публичного Калькулятора ---
 app.get("/api/ports", asyncHandler(async (req, res) => {
-    console.log("[v4.44 /api/ports GET] Request received."); // Changed from /api/public/ports
+    console.log("[v4.45 /api/ports GET] Request received.");
     const client = await pool.connect();
     try {
         const result = await client.query("SELECT id, name, code FROM ports ORDER BY name ASC");
-        console.log(`[v4.44 /api/ports GET] Found ${result.rows.length} ports.`);
-        res.json(result.rows.map(p => ({ id: parseInt(p.id, 10), name: p.name, code: p.code, displayText: `${p.name} (${p.code})` }))); // Ensure ID is integer
+        console.log(`[v4.45 /api/ports GET] Found ${result.rows.length} ports.`);
+        res.json(result.rows.map(p => ({ id: parseInt(p.id, 10), name: p.name, code: p.code, displayText: `${p.name} (${p.code})` })));
     } finally {
         client.release();
-        console.log("[v4.44 /api/ports GET] Client released.");
+        console.log("[v4.45 /api/ports GET] Client released.");
     }
 }));
 
 app.get("/api/container-types", asyncHandler(async (req, res) => {
-    console.log("[v4.44 /api/container-types GET] Request received."); // Changed from /api/public/container-types
+    console.log("[v4.45 /api/container-types GET] Request received.");
     const client = await pool.connect();
     try {
         const result = await client.query("SELECT id, name, description FROM container_types ORDER BY name ASC");
-        console.log(`[v4.44 /api/container-types GET] Found ${result.rows.length} container types.`);
-        res.json(result.rows.map(ct => ({ ...ct, id: parseInt(ct.id, 10) }))); // Ensure ID is integer
+        console.log(`[v4.45 /api/container-types GET] Found ${result.rows.length} container types.`);
+        res.json(result.rows.map(ct => ({ ...ct, id: parseInt(ct.id, 10) })));
     } finally {
         client.release();
-        console.log("[v4.44 /api/container-types GET] Client released.");
+        console.log("[v4.45 /api/container-types GET] Client released.");
     }
 }));
 
 app.post("/api/calculate", asyncHandler(async (req, res) => {
-    console.log("[v4.44 /api/calculate POST] Request received with body:", req.body);
+    console.log("[v4.45 /api/calculate POST] Request received with body:", req.body);
     const { originPort, destinationPort, containerType, weight, email } = req.body;
 
-    // Enhanced logging for incoming port and containerType IDs
-    console.log(`[v4.44 /api/calculate POST] Received originPort: ${originPort} (type: ${typeof originPort})`);
-    console.log(`[v4.44 /api/calculate POST] Received destinationPort: ${destinationPort} (type: ${typeof destinationPort})`);
-    console.log(`[v4.44 /api/calculate POST] Received containerType: ${containerType} (type: ${typeof containerType})`);
+    console.log(`[v4.45 /api/calculate POST] Received originPort: ${originPort} (type: ${typeof originPort})`);
+    console.log(`[v4.45 /api/calculate POST] Received destinationPort: ${destinationPort} (type: ${typeof destinationPort})`);
+    console.log(`[v4.45 /api/calculate POST] Received containerType: ${containerType} (type: ${typeof containerType})`);
 
     if (!originPort || !destinationPort || !containerType) {
-        console.log("[v4.44 /api/calculate POST] Missing required fields.");
+        console.log("[v4.45 /api/calculate POST] Missing required fields.");
         return res.status(400).json({ error: "Origin port, destination port, and container type are required." });
     }
 
-    // Validate that IDs are numbers if they are not undefined or null
     const originPortId = parseInt(originPort, 10);
     const destinationPortId = parseInt(destinationPort, 10);
     const containerTypeId = parseInt(containerType, 10);
 
     if (isNaN(originPortId) || isNaN(destinationPortId) || isNaN(containerTypeId)) {
-        console.error("[v4.34_filepath_fix /api/calculate POST] Invalid port or container type ID after parsing. Check client-side data.");
-        console.error(`Parsed IDs - Origin: ${originPortId}, Destination: ${destinationPortId}, Container: ${containerTypeId}`);
-        return res.status(400).json({ error: "Invalid port or container type ID. Ensure numeric IDs are sent." });
+        console.error("[v4.45 /api/calculate POST] Invalid ID format for port or container type.");
+        return res.status(400).json({ error: "Invalid ID format for port or container type." });
     }
 
     if (email && !validateEmail(email)) {
-        console.log("[v4.34_filepath_fix /api/calculate POST] Invalid email format.");
+        console.log("[v4.45 /api/calculate POST] Invalid email format.");
         return res.status(400).json({ error: "Invalid email format." });
     }
 
-    let client;
     try {
-        client = await pool.connect();
-        const calculationConfig = await loadCalculationConfigFromDB();
-        
-        const calculationData = {
-            originPortId: originPortId,
-            destinationPortId: destinationPortId,
-            containerTypeId: containerTypeId,
-            weight: weight || 20000, // Default weight if not provided
-            baseRates: calculationConfig.baseRatesConfig,
-            indices: calculationConfig.indicesConfig,
-            modelSettings: calculationConfig.modelSettings,
-            containerTypes: calculationConfig.containerTypes, // Pass all container types
-            dbClient: client // Pass the client for direct DB operations if needed by calculator
-        };
+        const config = await loadCalculationConfigFromDB();
+        console.log("[v4.45 /api/calculate POST] Calculation config loaded.");
 
-        console.log("[v4.34_filepath_fix /api/calculate POST] Data prepared for calculation:", JSON.stringify(calculationData, (key, value) => key === 'dbClient' ? undefined : value));
+        const { finalRate, detailedBreakdown, seasonalityFactor, compositeIndexEffect } = await calculateFreightRate(
+            pool, 
+            originPortId, 
+            destinationPortId, 
+            containerTypeId, 
+            parseFloat(weight) || 0, 
+            config
+        );
+        console.log(`[v4.45 /api/calculate POST] Calculation successful. Final rate: ${finalRate}`);
 
-        const result = await calculateFreightRate(calculationData);
-        console.log("[v4.34_filepath_fix /api/calculate POST] Calculated final rate details:", result);
-
-        if (result && typeof result.finalRate !== 'undefined') {
-            await saveRequestToHistory(client, originPortId, destinationPortId, containerTypeId, calculationData.weight, result.finalRate, email, result.indexValuesUsed || {});
-            console.log("[v4.34_filepath_fix /api/calculate POST] Request saved to history.");
-            res.json({
-                rate: result.finalRate,
-                minRate: result.minRate,
-                maxRate: result.maxRate,
-                avgRate: result.avgRate, // Ensure avgRate is part of the result from calculateFreightRate
-                sourceCount: result.sourceCount,
-                reliability: result.reliability,
-                calculationDetails: result.calculationDetails // For more detailed breakdown if needed
-            });
-        } else {
-            console.error("[v4.34_filepath_fix /api/calculate POST] Calculation did not return a final rate or was undefined.", result);
-            res.status(500).json({ error: "An error occurred during freight calculation (undefined result)." });
+        if (email) {
+            await saveRequestToHistory(pool, originPortId, destinationPortId, containerTypeId, parseFloat(weight) || 0, finalRate, email, detailedBreakdown.indexValuesUsed);
+            console.log("[v4.45 /api/calculate POST] Request saved to history.");
         }
+
+        res.json({ 
+            rate: finalRate, 
+            breakdown: detailedBreakdown, 
+            seasonalityFactor: seasonalityFactor,
+            compositeIndexEffect: compositeIndexEffect 
+        });
+
     } catch (error) {
-        console.error("[v4.44 /api/calculate POST] Error during calculation:", error.message, error.stack);
+        console.error("[v4.45 /api/calculate POST] Error during freight calculation:", error);
         res.status(500).json({ error: "An error occurred during freight calculation.", details: error.message });
-    } finally {
-        if (client) {
-             client.release(); console.log("[v4.44 /api/calculate POST] Client released after calculation attempt.");n.");
-        }
     }
 }));
 
-// --- API Маршруты для Админ Панели ---
+// --- API Маршруты для Админ Панели (CRUD операции) ---
+// ... (остальная часть CRUD операций для портов, типов контейнеров, базовых ставок, конфигурации индексов, настроек модели, истории расчетов)
+// ВАЖНО: Убедиться, что все логи версий обновлены до v4.45 и все SQL запросы используют container_type_id в нижнем регистре.
+
+// GET Ports (Admin)
 app.get("/api/admin/ports", asyncHandler(async (req, res) => {
-    console.log("[v4.34_filepath_fix /api/admin/ports GET] Request received.");
+    console.log("[v4.45 /api/admin/ports GET] Request received.");
     const client = await pool.connect();
     try {
         const result = await client.query("SELECT id, name, code, region, country, latitude, longitude FROM ports ORDER BY name ASC");
-        console.log(`[v4.34_filepath_fix /api/admin/ports GET] Found ${result.rows.length} ports.`);
+        console.log(`[v4.45 /api/admin/ports GET] Found ${result.rows.length} ports.`);
         res.json(result.rows);
     } finally {
         client.release();
-        console.log("[v4.34_filepath_fix /api/admin/ports GET] Client released.");
+        console.log("[v4.45 /api/admin/ports GET] Client released.");
     }
 }));
 
+// POST Port (Admin)
 app.post("/api/admin/ports", asyncHandler(async (req, res) => {
-    console.log("[v4.34_filepath_fix /api/admin/ports POST] Request received with body:", req.body);
+    console.log("[v4.45 /api/admin/ports POST] Request received with body:", req.body);
     const { name, code, region, country, latitude, longitude } = req.body;
     if (!name) {
         return res.status(400).json({ error: "Port name is required." });
@@ -423,19 +507,20 @@ app.post("/api/admin/ports", asyncHandler(async (req, res) => {
             "INSERT INTO ports (name, code, region, country, latitude, longitude) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *",
             [name, code, region, country, latitude, longitude]
         );
-        console.log("[v4.34_filepath_fix /api/admin/ports POST] Port added:", result.rows[0]);
+        console.log("[v4.45 /api/admin/ports POST] Port added:", result.rows[0]);
         res.status(201).json(result.rows[0]);
     } catch (error) {
-        console.error("[v4.34_filepath_fix /api/admin/ports POST] Error adding port:", error);
+        console.error("[v4.45 /api/admin/ports POST] Error adding port:", error);
         res.status(500).json({ error: "Failed to add port.", details: error.message });
     } finally {
         client.release();
-        console.log("[v4.34_filepath_fix /api/admin/ports POST] Client released.");
+        console.log("[v4.45 /api/admin/ports POST] Client released.");
     }
 }));
 
+// PUT Port (Admin)
 app.put("/api/admin/ports/:id", asyncHandler(async (req, res) => {
-    console.log(`[v4.34_filepath_fix /api/admin/ports PUT] ID: ${req.params.id}, Body:`, req.body);
+    console.log(`[v4.45 /api/admin/ports PUT] ID: ${req.params.id}, Body:`, req.body);
     const { id } = req.params;
     const { name, code, region, country, latitude, longitude } = req.body;
     if (!name) {
@@ -450,19 +535,20 @@ app.put("/api/admin/ports/:id", asyncHandler(async (req, res) => {
         if (result.rows.length === 0) {
             return res.status(404).json({ error: "Port not found." });
         }
-        console.log("[v4.34_filepath_fix /api/admin/ports PUT] Port updated:", result.rows[0]);
+        console.log("[v4.45 /api/admin/ports PUT] Port updated:", result.rows[0]);
         res.json(result.rows[0]);
     } catch (error) {
-        console.error("[v4.34_filepath_fix /api/admin/ports PUT] Error updating port:", error);
+        console.error("[v4.45 /api/admin/ports PUT] Error updating port:", error);
         res.status(500).json({ error: "Failed to update port.", details: error.message });
     } finally {
         client.release();
-        console.log("[v4.34_filepath_fix /api/admin/ports PUT] Client released.");
+        console.log("[v4.45 /api/admin/ports PUT] Client released.");
     }
 }));
 
+// DELETE Port (Admin)
 app.delete("/api/admin/ports/:id", asyncHandler(async (req, res) => {
-    console.log(`[v4.34_filepath_fix /api/admin/ports DELETE] ID: ${req.params.id}`);
+    console.log(`[v4.45 /api/admin/ports DELETE] ID: ${req.params.id}`);
     const { id } = req.params;
     const client = await pool.connect();
     try {
@@ -470,33 +556,38 @@ app.delete("/api/admin/ports/:id", asyncHandler(async (req, res) => {
         if (result.rows.length === 0) {
             return res.status(404).json({ error: "Port not found." });
         }
-        console.log("[v4.34_filepath_fix /api/admin/ports DELETE] Port deleted:", result.rows[0]);
+        console.log("[v4.45 /api/admin/ports DELETE] Port deleted:", result.rows[0]);
         res.status(204).send();
     } catch (error) {
-        console.error("[v4.34_filepath_fix /api/admin/ports DELETE] Error deleting port:", error);
+        console.error("[v4.45 /api/admin/ports DELETE] Error deleting port:", error);
+        // Check for foreign key constraint violation (e.g., if port is used in calculation_history)
+        if (error.code === '23503') { // PostgreSQL error code for foreign_key_violation
+             return res.status(400).json({ error: "Cannot delete port: it is currently used in calculation history or other records. Please remove dependent records first." });
+        }
         res.status(500).json({ error: "Failed to delete port.", details: error.message });
     } finally {
         client.release();
-        console.log("[v4.34_filepath_fix /api/admin/ports DELETE] Client released.");
+        console.log("[v4.45 /api/admin/ports DELETE] Client released.");
     }
 }));
 
-
+// GET Container Types (Admin)
 app.get("/api/admin/container-types", asyncHandler(async (req, res) => {
-    console.log("[v4.34_filepath_fix /api/admin/container-types GET] Request received.");
+    console.log("[v4.45 /api/admin/container-types GET] Request received.");
     const client = await pool.connect();
     try {
         const result = await client.query("SELECT id, name, description FROM container_types ORDER BY name ASC");
-        console.log(`[v4.34_filepath_fix /api/admin/container-types GET] Found ${result.rows.length} container types.`);
+        console.log(`[v4.45 /api/admin/container-types GET] Found ${result.rows.length} container types.`);
         res.json(result.rows);
     } finally {
         client.release();
-        console.log("[v4.34_filepath_fix /api/admin/container-types GET] Client released.");
+        console.log("[v4.45 /api/admin/container-types GET] Client released.");
     }
 }));
 
+// POST Container Type (Admin)
 app.post("/api/admin/container-types", asyncHandler(async (req, res) => {
-    console.log("[v4.34_filepath_fix /api/admin/container-types POST] Request received with body:", req.body);
+    console.log("[v4.45 /api/admin/container-types POST] Request received with body:", req.body);
     const { name, description } = req.body;
     if (!name) {
         return res.status(400).json({ error: "Container type name is required." });
@@ -507,19 +598,20 @@ app.post("/api/admin/container-types", asyncHandler(async (req, res) => {
             "INSERT INTO container_types (name, description) VALUES ($1, $2) RETURNING *",
             [name, description]
         );
-        console.log("[v4.34_filepath_fix /api/admin/container-types POST] Container type added:", result.rows[0]);
+        console.log("[v4.45 /api/admin/container-types POST] Container type added:", result.rows[0]);
         res.status(201).json(result.rows[0]);
     } catch (error) {
-        console.error("[v4.34_filepath_fix /api/admin/container-types POST] Error adding container type:", error);
+        console.error("[v4.45 /api/admin/container-types POST] Error adding container type:", error);
         res.status(500).json({ error: "Failed to add container type.", details: error.message });
     } finally {
         client.release();
-        console.log("[v4.34_filepath_fix /api/admin/container-types POST] Client released.");
+        console.log("[v4.45 /api/admin/container-types POST] Client released.");
     }
 }));
 
+// PUT Container Type (Admin)
 app.put("/api/admin/container-types/:id", asyncHandler(async (req, res) => {
-    console.log(`[v4.34_filepath_fix /api/admin/container-types PUT] ID: ${req.params.id}, Body:`, req.body);
+    console.log(`[v4.45 /api/admin/container-types PUT] ID: ${req.params.id}, Body:`, req.body);
     const { id } = req.params;
     const { name, description } = req.body;
     if (!name) {
@@ -534,58 +626,68 @@ app.put("/api/admin/container-types/:id", asyncHandler(async (req, res) => {
         if (result.rows.length === 0) {
             return res.status(404).json({ error: "Container type not found." });
         }
-        console.log("[v4.34_filepath_fix /api/admin/container-types PUT] Container type updated:", result.rows[0]);
+        console.log("[v4.45 /api/admin/container-types PUT] Container type updated:", result.rows[0]);
         res.json(result.rows[0]);
     } catch (error) {
-        console.error("[v4.34_filepath_fix /api/admin/container-types PUT] Error updating container type:", error);
+        console.error("[v4.45 /api/admin/container-types PUT] Error updating container type:", error);
         res.status(500).json({ error: "Failed to update container type.", details: error.message });
     } finally {
         client.release();
-        console.log("[v4.34_filepath_fix /api/admin/container-types PUT] Client released.");
+        console.log("[v4.45 /api/admin/container-types PUT] Client released.");
     }
 }));
 
+// DELETE Container Type (Admin)
 app.delete("/api/admin/container-types/:id", asyncHandler(async (req, res) => {
-    console.log(`[v4.34_filepath_fix /api/admin/container-types DELETE] ID: ${req.params.id}`);
+    console.log(`[v4.45 /api/admin/container-types DELETE] ID: ${req.params.id}`);
     const { id } = req.params;
     const client = await pool.connect();
     try {
-        // Check if this container type is used in base_rates
-        const checkResult = await client.query("SELECT 1 FROM base_rates WHERE container_type_id = $1 LIMIT 1", [id]);
-        if (checkResult.rows.length > 0) {
-            console.log("[v4.34_filepath_fix /api/admin/container-types DELETE] Attempt to delete container type used in base_rates.");
+        const checkBaseRates = await client.query("SELECT 1 FROM base_rates WHERE container_type_id = $1 LIMIT 1", [id]);
+        if (checkBaseRates.rows.length > 0) {
+            console.log("[v4.45 /api/admin/container-types DELETE] Attempt to delete container type used in base_rates.");
             return res.status(400).json({ error: "Cannot delete container type: it is currently used in base rates. Please update base rates first." });
+        }
+        const checkCalcHistory = await client.query("SELECT 1 FROM calculation_history WHERE container_type_id = $1 LIMIT 1", [id]);
+        if (checkCalcHistory.rows.length > 0) {
+            console.log("[v4.45 /api/admin/container-types DELETE] Attempt to delete container type used in calculation_history.");
+            return res.status(400).json({ error: "Cannot delete container type: it is currently used in calculation history. Please remove dependent records first." });
         }
         const result = await client.query("DELETE FROM container_types WHERE id = $1 RETURNING *", [id]);
         if (result.rows.length === 0) {
             return res.status(404).json({ error: "Container type not found." });
         }
-        console.log("[v4.34_filepath_fix /api/admin/container-types DELETE] Container type deleted:", result.rows[0]);
+        console.log("[v4.45 /api/admin/container-types DELETE] Container type deleted:", result.rows[0]);
         res.status(204).send();
     } catch (error) {
-        console.error("[v4.34_filepath_fix /api/admin/container-types DELETE] Error deleting container type:", error);
+        console.error("[v4.45 /api/admin/container-types DELETE] Error deleting container type:", error);
         res.status(500).json({ error: "Failed to delete container type.", details: error.message });
     } finally {
         client.release();
-        console.log("[v4.34_filepath_fix /api/admin/container-types DELETE] Client released.");
+        console.log("[v4.45 /api/admin/container-types DELETE] Client released.");
     }
 }));
 
+// GET Base Rates (Admin)
 app.get("/api/admin/base-rates", asyncHandler(async (req, res) => {
-    console.log("[v4.34_filepath_fix /api/admin/base-rates GET] Request received.");
+    console.log("[v4.45 /api/admin/base-rates GET] Request received.");
     const client = await pool.connect();
     try {
         const result = await client.query("SELECT br.id, br.origin_region, br.destination_region, br.container_type_id, ct.name as container_type_name, br.rate FROM base_rates br JOIN container_types ct ON br.container_type_id = ct.id ORDER BY br.origin_region, br.destination_region, ct.name ASC");
-        console.log(`[v4.34_filepath_fix /api/admin/base-rates GET] Found ${result.rows.length} base rates.`);
+        console.log(`[v4.45 /api/admin/base-rates GET] Found ${result.rows.length} base rates.`);
         res.json(result.rows);
+    } catch (error) {
+        console.error("[v4.45 /api/admin/base-rates GET] Error fetching base rates:", error);
+        res.status(500).json({ error: "Failed to fetch base rates.", details: error.message });
     } finally {
         client.release();
-        console.log("[v4.34_filepath_fix /api/admin/base-rates GET] Client released.");
+        console.log("[v4.45 /api/admin/base-rates GET] Client released.");
     }
 }));
 
+// POST Base Rate (Admin)
 app.post("/api/admin/base-rates", asyncHandler(async (req, res) => {
-    console.log("[v4.34_filepath_fix /api/admin/base-rates POST] Request received with body:", req.body);
+    console.log("[v4.45 /api/admin/base-rates POST] Request received with body:", req.body);
     const { origin_region, destination_region, container_type_id, rate } = req.body;
     if (!origin_region || !destination_region || !container_type_id || rate === undefined) {
         return res.status(400).json({ error: "Origin region, destination region, container type ID, and rate are required." });
@@ -596,21 +698,21 @@ app.post("/api/admin/base-rates", asyncHandler(async (req, res) => {
             "INSERT INTO base_rates (origin_region, destination_region, container_type_id, rate) VALUES ($1, $2, $3, $4) RETURNING *",
             [origin_region, destination_region, parseInt(container_type_id, 10), parseFloat(rate)]
         );
-        // Fetch the newly created rate with container_type_name for response consistency
         const newRate = await client.query("SELECT br.id, br.origin_region, br.destination_region, br.container_type_id, ct.name as container_type_name, br.rate FROM base_rates br JOIN container_types ct ON br.container_type_id = ct.id WHERE br.id = $1", [result.rows[0].id]);
-        console.log("[v4.34_filepath_fix /api/admin/base-rates POST] Base rate added:", newRate.rows[0]);
+        console.log("[v4.45 /api/admin/base-rates POST] Base rate added:", newRate.rows[0]);
         res.status(201).json(newRate.rows[0]);
     } catch (error) {
-        console.error("[v4.34_filepath_fix /api/admin/base-rates POST] Error adding base rate:", error);
+        console.error("[v4.45 /api/admin/base-rates POST] Error adding base rate:", error);
         res.status(500).json({ error: "Failed to add base rate.", details: error.message });
     } finally {
         client.release();
-        console.log("[v4.34_filepath_fix /api/admin/base-rates POST] Client released.");
+        console.log("[v4.45 /api/admin/base-rates POST] Client released.");
     }
 }));
 
+// PUT Base Rate (Admin)
 app.put("/api/admin/base-rates/:id", asyncHandler(async (req, res) => {
-    console.log(`[v4.34_filepath_fix /api/admin/base-rates PUT] ID: ${req.params.id}, Body:`, req.body);
+    console.log(`[v4.45 /api/admin/base-rates PUT] ID: ${req.params.id}, Body:`, req.body);
     const { id } = req.params;
     const { origin_region, destination_region, container_type_id, rate } = req.body;
     if (!origin_region || !destination_region || !container_type_id || rate === undefined) {
@@ -626,19 +728,20 @@ app.put("/api/admin/base-rates/:id", asyncHandler(async (req, res) => {
             return res.status(404).json({ error: "Base rate not found." });
         }
         const updatedRate = await client.query("SELECT br.id, br.origin_region, br.destination_region, br.container_type_id, ct.name as container_type_name, br.rate FROM base_rates br JOIN container_types ct ON br.container_type_id = ct.id WHERE br.id = $1", [id]);
-        console.log("[v4.34_filepath_fix /api/admin/base-rates PUT] Base rate updated:", updatedRate.rows[0]);
+        console.log("[v4.45 /api/admin/base-rates PUT] Base rate updated:", updatedRate.rows[0]);
         res.json(updatedRate.rows[0]);
     } catch (error) {
-        console.error("[v4.34_filepath_fix /api/admin/base-rates PUT] Error updating base rate:", error);
+        console.error("[v4.45 /api/admin/base-rates PUT] Error updating base rate:", error);
         res.status(500).json({ error: "Failed to update base rate.", details: error.message });
     } finally {
         client.release();
-        console.log("[v4.34_filepath_fix /api/admin/base-rates PUT] Client released.");
+        console.log("[v4.45 /api/admin/base-rates PUT] Client released.");
     }
 }));
 
+// DELETE Base Rate (Admin)
 app.delete("/api/admin/base-rates/:id", asyncHandler(async (req, res) => {
-    console.log(`[v4.34_filepath_fix /api/admin/base-rates DELETE] ID: ${req.params.id}`);
+    console.log(`[v4.45 /api/admin/base-rates DELETE] ID: ${req.params.id}`);
     const { id } = req.params;
     const client = await pool.connect();
     try {
@@ -646,32 +749,37 @@ app.delete("/api/admin/base-rates/:id", asyncHandler(async (req, res) => {
         if (result.rows.length === 0) {
             return res.status(404).json({ error: "Base rate not found." });
         }
-        console.log("[v4.34_filepath_fix /api/admin/base-rates DELETE] Base rate deleted:", result.rows[0]);
+        console.log("[v4.45 /api/admin/base-rates DELETE] Base rate deleted:", result.rows[0]);
         res.status(204).send();
     } catch (error) {
-        console.error("[v4.34_filepath_fix /api/admin/base-rates DELETE] Error deleting base rate:", error);
+        console.error("[v4.45 /api/admin/base-rates DELETE] Error deleting base rate:", error);
         res.status(500).json({ error: "Failed to delete base rate.", details: error.message });
     } finally {
         client.release();
-        console.log("[v4.34_filepath_fix /api/admin/base-rates DELETE] Client released.");
+        console.log("[v4.45 /api/admin/base-rates DELETE] Client released.");
     }
 }));
 
+// GET Index Config (Admin)
 app.get("/api/admin/index-config", asyncHandler(async (req, res) => {
-    console.log("[v4.34_filepath_fix /api/admin/index-config GET] Request received.");
+    console.log("[v4.45 /api/admin/index-config GET] Request received.");
     const client = await pool.connect();
     try {
         const result = await client.query("SELECT index_name, baseline_value, weight_percentage, current_value, last_updated FROM index_config ORDER BY index_name ASC");
-        console.log(`[v4.34_filepath_fix /api/admin/index-config GET] Found ${result.rows.length} index configs.`);
+        console.log(`[v4.45 /api/admin/index-config GET] Found ${result.rows.length} index configs.`);
         res.json(result.rows);
+    } catch (error) {
+        console.error("[v4.45 /api/admin/index-config GET] Error fetching index config:", error);
+        res.status(500).json({ error: "Failed to fetch index config.", details: error.message });
     } finally {
         client.release();
-        console.log("[v4.34_filepath_fix /api/admin/index-config GET] Client released.");
+        console.log("[v4.45 /api/admin/index-config GET] Client released.");
     }
 }));
 
+// PUT Index Config (Admin)
 app.put("/api/admin/index-config/:index_name", asyncHandler(async (req, res) => {
-    console.log(`[v4.34_filepath_fix /api/admin/index-config PUT] Index Name: ${req.params.index_name}, Body:`, req.body);
+    console.log(`[v4.45 /api/admin/index-config PUT] Index Name: ${req.params.index_name}, Body:`, req.body);
     const { index_name } = req.params;
     const { baseline_value, weight_percentage, current_value } = req.body;
     if (baseline_value === undefined || weight_percentage === undefined || current_value === undefined) {
@@ -686,245 +794,159 @@ app.put("/api/admin/index-config/:index_name", asyncHandler(async (req, res) => 
         if (result.rows.length === 0) {
             return res.status(404).json({ error: "Index config not found." });
         }
-        console.log("[v4.34_filepath_fix /api/admin/index-config PUT] Index config updated:", result.rows[0]);
+        console.log("[v4.45 /api/admin/index-config PUT] Index config updated:", result.rows[0]);
         res.json(result.rows[0]);
     } catch (error) {
-        console.error("[v4.34_filepath_fix /api/admin/index-config PUT] Error updating index config:", error);
+        console.error("[v4.45 /api/admin/index-config PUT] Error updating index config:", error);
         res.status(500).json({ error: "Failed to update index config.", details: error.message });
     } finally {
         client.release();
-        console.log("[v4.34_filepath_fix /api/admin/index-config PUT] Client released.");
+        console.log("[v4.45 /api/admin/index-config PUT] Client released.");
     }
 }));
 
+// GET Model Settings (Admin)
 app.get("/api/admin/model-settings", asyncHandler(async (req, res) => {
-    console.log("[v4.34_filepath_fix /api/admin/model-settings GET] Request received.");
+    console.log("[v4.45 /api/admin/model-settings GET] Request received.");
     const client = await pool.connect();
     try {
         const result = await client.query("SELECT setting_key, setting_value, description FROM model_settings ORDER BY setting_key ASC");
-        console.log(`[v4.34_filepath_fix /api/admin/model-settings GET] Found ${result.rows.length} model settings.`);
+        console.log(`[v4.45 /api/admin/model-settings GET] Found ${result.rows.length} model settings.`);
         res.json(result.rows);
+    } catch (error) {
+        console.error("[v4.45 /api/admin/model-settings GET] Error fetching model settings:", error);
+        res.status(500).json({ error: "Failed to fetch model settings.", details: error.message });
     } finally {
         client.release();
-        console.log("[v4.34_filepath_fix /api/admin/model-settings GET] Client released.");
+        console.log("[v4.45 /api/admin/model-settings GET] Client released.");
     }
 }));
 
+// PUT Model Settings (Admin)
 app.put("/api/admin/model-settings/:setting_key", asyncHandler(async (req, res) => {
-    console.log(`[v4.34_filepath_fix /api/admin/model-settings PUT] Key: ${req.params.setting_key}, Body:`, req.body);
+    console.log(`[v4.45 /api/admin/model-settings PUT] Key: ${req.params.setting_key}, Body:`, req.body);
     const { setting_key } = req.params;
-    const { setting_value } = req.body;
+    const { setting_value, description } = req.body;
     if (setting_value === undefined) {
         return res.status(400).json({ error: "Setting value is required." });
     }
     const client = await pool.connect();
     try {
         const result = await client.query(
-            "UPDATE model_settings SET setting_value = $1 WHERE setting_key = $2 RETURNING *",
-            [setting_value, setting_key]
+            "UPDATE model_settings SET setting_value = $1, description = $2 WHERE setting_key = $3 RETURNING *",
+            [setting_value, description, setting_key]
         );
         if (result.rows.length === 0) {
-            return res.status(404).json({ error: "Model setting not found." });
+             // If the setting_key does not exist, create it (upsert behavior)
+            const insertResult = await client.query(
+                "INSERT INTO model_settings (setting_key, setting_value, description) VALUES ($1, $2, $3) RETURNING *",
+                [setting_key, setting_value, description]
+            );
+            console.log("[v4.45 /api/admin/model-settings PUT] Model setting created:", insertResult.rows[0]);
+            res.status(201).json(insertResult.rows[0]);
+        } else {
+            console.log("[v4.45 /api/admin/model-settings PUT] Model setting updated:", result.rows[0]);
+            res.json(result.rows[0]);
         }
-        console.log("[v4.34_filepath_fix /api/admin/model-settings PUT] Model setting updated:", result.rows[0]);
-        res.json(result.rows[0]);
     } catch (error) {
-        console.error("[v4.34_filepath_fix /api/admin/model-settings PUT] Error updating model setting:", error);
-        res.status(500).json({ error: "Failed to update model setting.", details: error.message });
+        console.error("[v4.45 /api/admin/model-settings PUT] Error updating/creating model setting:", error);
+        res.status(500).json({ error: "Failed to update or create model setting.", details: error.message });
     } finally {
         client.release();
-        console.log("[v4.34_filepath_fix /api/admin/model-settings PUT] Client released.");
+        console.log("[v4.45 /api/admin/model-settings PUT] Client released.");
     }
 }));
 
+// GET Calculation History (Admin)
 app.get("/api/admin/calculation-history", asyncHandler(async (req, res) => {
-    console.log("[v4.34_filepath_fix /api/admin/calculation-history GET] Request received.");
+    console.log("[v4.45 /api/admin/calculation-history GET] Request received.");
     const client = await pool.connect();
     try {
         const result = await client.query(`
             SELECT 
-                ch.id, ch.timestamp, 
-                op.name as origin_port_name, dp.name as destination_port_name, 
-                ct.name as container_type_name, ch.weight, ch.calculated_rate, ch.user_email, ch.index_values_used
+                ch.id, 
+                ch.timestamp, 
+                op.name as origin_port_name, 
+                dp.name as destination_port_name, 
+                ct.name as container_type_name, 
+                ch.weight, 
+                ch.calculated_rate, 
+                ch.user_email,
+                ch.index_values_used
             FROM calculation_history ch
             LEFT JOIN ports op ON ch.origin_port_id = op.id
             LEFT JOIN ports dp ON ch.destination_port_id = dp.id
             LEFT JOIN container_types ct ON ch.container_type_id = ct.id
             ORDER BY ch.timestamp DESC
         `);
-        console.log(`[v4.34_filepath_fix /api/admin/calculation-history GET] Found ${result.rows.length} history records.`);
+        console.log(`[v4.45 /api/admin/calculation-history GET] Found ${result.rows.length} history records.`);
         res.json(result.rows);
+    } catch (error) {
+        console.error("[v4.45 /api/admin/calculation-history GET] Error fetching calculation history:", error);
+        res.status(500).json({ error: "Failed to fetch calculation history.", details: error.message });
     } finally {
         client.release();
-        console.log("[v4.34_filepath_fix /api/admin/calculation-history GET] Client released.");
+        console.log("[v4.45 /api/admin/calculation-history GET] Client released.");
     }
 }));
 
-// --- NEW UPLOAD ROUTES ---
-app.post("/api/admin/upload/indices", upload.single('indicesFile'), asyncHandler(async (req, res) => {
-    console.log("[v4.34_filepath_fix /api/admin/upload/indices POST] Request received.");
+// POST Endpoint for Seasonality Data Update
+app.post('/api/admin/update-seasonality', upload.single('seasonalityFile'), asyncHandler(async (req, res) => {
+    console.log("[v4.45 /api/admin/update-seasonality POST] Request received.");
     if (!req.file) {
-        console.log("[v4.34_filepath_fix /api/admin/upload/indices POST] No file uploaded.");
-        return res.status(400).json({ error: "No file uploaded." });
+        console.log("[v4.45 /api/admin/update-seasonality POST] No file uploaded.");
+        return res.status(400).send('No file uploaded.');
     }
-
-    let client;
+    console.log(`[v4.45 /api/admin/update-seasonality POST] File uploaded: ${req.file.originalname}`);
+    
+    const client = await pool.connect();
     try {
-        const workbook = xlsx.read(req.file.buffer, { type: 'buffer' });
-        const sheetName = workbook.SheetNames[0];
-        const sheet = workbook.Sheets[sheetName];
-        const data = xlsx.utils.sheet_to_json(sheet);
-
-        console.log(`[v4.34_filepath_fix /api/admin/upload/indices POST] Parsed ${data.length} rows from Excel.`);
-
-        client = await pool.connect();
-        await client.query('BEGIN');
-
-        let updatedCount = 0;
-        let insertedCount = 0;
-
-        for (const row of data) {
-            const index_name = row.index_name || row.Index_Name;
-            const baseline_value = parseFloat(row.baseline_value || row.Baseline_Value);
-            const weight_percentage = parseFloat(row.weight_percentage || row.Weight_Percentage);
-            const current_value = parseFloat(row.current_value || row.Current_Value);
-
-            if (!index_name || isNaN(baseline_value) || isNaN(weight_percentage) || isNaN(current_value) || weight_percentage < 0 || weight_percentage > 100) {
-                console.warn(`[v4.34_filepath_fix /api/admin/upload/indices POST] Skipping invalid row: ${JSON.stringify(row)}`);
-                continue;
-            }
-
-            const result = await client.query(
-                `INSERT INTO index_config (index_name, baseline_value, weight_percentage, current_value, last_updated)
-                 VALUES ($1, $2, $3, $4, NOW())
-                 ON CONFLICT (index_name) DO UPDATE SET
-                   baseline_value = EXCLUDED.baseline_value,
-                   weight_percentage = EXCLUDED.weight_percentage,
-                   current_value = EXCLUDED.current_value,
-                   last_updated = NOW()
-                 RETURNING index_name, (xmax::text::int > 0) AS updated;`,
-                [index_name, baseline_value, weight_percentage, current_value]
-            );
-            if (result.rows.length > 0) {
-                if (result.rows[0].updated) {
-                    updatedCount++;
-                } else {
-                    insertedCount++;
-                }
-            }
-        }
-
-        await client.query('COMMIT');
-        console.log(`[v4.34_filepath_fix /api/admin/upload/indices POST] Successfully processed file. Inserted: ${insertedCount}, Updated: ${updatedCount}`);
-        res.json({ message: `Successfully uploaded and processed indices. Inserted: ${insertedCount}, Updated: ${updatedCount}` });
-
+        await initializeAndUpdateSeasonalityData(client, req.file.buffer);
+        console.log("[v4.45 /api/admin/update-seasonality POST] Seasonality data updated successfully.");
+        res.send('Seasonality data updated successfully.');
     } catch (error) {
-        if (client) await client.query('ROLLBACK');
-        console.error("[v4.34_filepath_fix /api/admin/upload/indices POST] Error processing file:", error);
-        res.status(500).json({ error: "Failed to process uploaded indices file.", details: error.message });
+        console.error("[v4.45 /api/admin/update-seasonality POST] Error updating seasonality data:", error);
+        res.status(500).send(`Error updating seasonality data: ${error.message}`);
     } finally {
-        if (client) client.release();
-        console.log("[v4.34_filepath_fix /api/admin/upload/indices POST] Client released.");
+        client.release();
+        console.log("[v4.45 /api/admin/update-seasonality POST] Client released.");
     }
 }));
 
-app.post("/api/admin/upload/base-rates", upload.single('baseRatesFile'), asyncHandler(async (req, res) => {
-    console.log("[v4.34_filepath_fix /api/admin/upload/base-rates POST] Request received.");
-    if (!req.file) {
-        console.log("[v4.34_filepath_fix /api/admin/upload/base-rates POST] No file uploaded.");
-        return res.status(400).json({ error: "No file uploaded." });
-    }
-
-    let client;
+// GET Seasonality Factors (Admin) - for viewing current factors
+app.get("/api/admin/seasonality-factors", asyncHandler(async (req, res) => {
+    console.log("[v4.45 /api/admin/seasonality-factors GET] Request received.");
+    const client = await pool.connect();
     try {
-        const workbook = xlsx.read(req.file.buffer, { type: 'buffer' });
-        const sheetName = workbook.SheetNames[0];
-        const sheet = workbook.Sheets[sheetName];
-        const data = xlsx.utils.sheet_to_json(sheet);
-
-        console.log(`[v4.34_filepath_fix /api/admin/upload/base-rates POST] Parsed ${data.length} rows from Excel.`);
-
-        client = await pool.connect();
-        await client.query('BEGIN');
-
-        // Get container types for ID lookup
-        const ctResult = await client.query("SELECT id, name FROM container_types");
-        const containerTypesMap = new Map(ctResult.rows.map(ct => [ct.name.toLowerCase(), ct.id]));
-        console.log("[v4.34_filepath_fix /api/admin/upload/base-rates POST] Container types map created:", containerTypesMap);
-
-        let updatedCount = 0;
-        let insertedCount = 0;
-        let skippedCount = 0;
-
-        for (const row of data) {
-            const origin_region = row.origin_region || row.Origin_Region;
-            const destination_region = row.destination_region || row.Destination_Region;
-            const container_type_name = row.container_type || row.Container_Type; // Expecting name, e.g., "20ft Standard"
-            const rate = parseFloat(row.rate || row.Rate);
-
-            if (!origin_region || !destination_region || !container_type_name || isNaN(rate)) {
-                console.warn(`[v4.34_filepath_fix /api/admin/upload/base-rates POST] Skipping invalid row (missing data or invalid rate): ${JSON.stringify(row)}`);
-                skippedCount++;
-                continue;
-            }
-
-            const container_type_id = containerTypesMap.get(container_type_name.toLowerCase());
-            if (!container_type_id) {
-                console.warn(`[v4.34_filepath_fix /api/admin/upload/base-rates POST] Skipping row due to unknown container type name: '${container_type_name}'. Row: ${JSON.stringify(row)}`);
-                skippedCount++;
-                continue;
-            }
-            console.log(`[v4.34_filepath_fix /api/admin/upload/base-rates POST] Matched container type '${container_type_name}' to ID: ${container_type_id}`);
-
-            const result = await client.query(
-                `INSERT INTO base_rates (origin_region, destination_region, container_type_id, rate)
-                 VALUES ($1, $2, $3, $4)
-                 ON CONFLICT (origin_region, destination_region, container_type_id) DO UPDATE SET
-                   rate = EXCLUDED.rate
-                 RETURNING id, (xmax::text::int > 0) AS updated;`,
-                [origin_region, destination_region, container_type_id, rate]
-            );
-
-            if (result.rows.length > 0) {
-                if (result.rows[0].updated) {
-                    updatedCount++;
-                } else {
-                    insertedCount++;
-                }
-            }
-        }
-
-        await client.query('COMMIT');
-        console.log(`[v4.34_filepath_fix /api/admin/upload/base-rates POST] Successfully processed file. Inserted: ${insertedCount}, Updated: ${updatedCount}, Skipped: ${skippedCount}`);
-        res.json({ message: `Successfully uploaded and processed base rates. Inserted: ${insertedCount}, Updated: ${updatedCount}, Skipped: ${skippedCount}` });
-
+        const result = await client.query("SELECT month, factor FROM seasonality_factors ORDER BY month ASC");
+        console.log(`[v4.45 /api/admin/seasonality-factors GET] Found ${result.rows.length} seasonality factors.`);
+        res.json(result.rows);
     } catch (error) {
-        if (client) await client.query('ROLLBACK');
-        console.error("[v4.34_filepath_fix /api/admin/upload/base-rates POST] Error processing file:", error);
-        res.status(500).json({ error: "Failed to process uploaded base rates file.", details: error.message });
+        console.error("[v4.45 /api/admin/seasonality-factors GET] Error fetching seasonality factors:", error);
+        res.status(500).json({ error: "Failed to fetch seasonality factors.", details: error.message });
     } finally {
-        if (client) client.release();
-        console.log("[v4.34_filepath_fix /api/admin/upload/base-rates POST] Client released.");
+        client.release();
+        console.log("[v4.45 /api/admin/seasonality-factors GET] Client released.");
     }
 }));
 
 // --- Глобальный обработчик ошибок ---
 app.use((err, req, res, next) => {
-  console.error("[v4.34_filepath_fix Global Error Handler] An unexpected error occurred:", err.stack);
-  res.status(500).json({ error: "An unexpected server error occurred.", details: err.message });
+  console.error("[v4.45 Global Error Handler] An unexpected error occurred:", err);
+  res.status(500).json({ error: 'An unexpected server error occurred.', details: err.message });
 });
 
-// --- Запуск сервера и инициализация --- 
+// --- Запуск сервера после инициализации ---
 async function startServer() {
-  try {
-    await initializeSystem();
-    app.listen(PORT, () => {
-      console.log(`[v4.34_filepath_fix] Server is running on port ${PORT}`);
-    });
-  } catch (error) {
-    console.error("[v4.34_filepath_fix] Failed to start server due to initialization error:", error);
-    process.exit(1); // Exit if initialization fails
-  }
+    try {
+        await initializeSystem(); // Выполняем всю инициализацию, включая автомиграцию
+        app.listen(PORT, () => {
+            console.log(`[v4.45 Auto-Migration] Server is running on port ${PORT}`);
+        });
+    } catch (error) {
+        console.error("[v4.45 Auto-Migration] Failed to initialize system or start server:", error);
+        process.exit(1); // Завершаем процесс, если инициализация не удалась
+    }
 }
 
 startServer();
