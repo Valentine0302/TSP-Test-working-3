@@ -54,7 +54,6 @@ app.post('/api/upload/indices', async (req, res) => {
 app.post('/api/upload/base-rates', async (req, res) => {
   res.json({ success: true });
 });
-const PORT = process.env.PORT || 3000;
 
 // Middleware
 app.use(cors());
