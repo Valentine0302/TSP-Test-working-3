@@ -119,6 +119,10 @@ async function autoMigrateDatabase() {
                 );
                 if (finalCheck.rows.length > 0) {
                     console.log(`[v4.46 Robust Migration] Column "container_type_id" already exists in "${tableName}". No migration needed for this column in this table.`);
+                  await client.query(`
+  ALTER TABLE ${tableName} 
+  ALTER COLUMN container_type_id TYPE VARCHAR(20)
+`);
                 } else {
                     console.warn(`[v4.46 Robust Migration] WARNING: After all checks, "container_type_id" (nor its variants "container_type" or "Container_Type_ID" that could be renamed) not found in "${tableName}". This table might be created later by initializeDatabaseTables, or there's an unexpected schema.`);
                 }
@@ -173,7 +177,7 @@ async function initializeDatabaseTables() {
         id SERIAL PRIMARY KEY, 
         origin_region VARCHAR(100) NOT NULL,
         destination_region VARCHAR(100) NOT NULL,
-        container_type_id INT NOT NULL, 
+        container_type_id VARCHAR(20) NOT NULL, 
         rate NUMERIC NOT NULL,
         UNIQUE(origin_region, destination_region, container_type_id),
         FOREIGN KEY (container_type_id) REFERENCES container_types(id)
@@ -205,8 +209,8 @@ async function initializeDatabaseTables() {
       CREATE TABLE IF NOT EXISTS calculation_history (
         id SERIAL PRIMARY KEY,
         timestamp TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-        origin_port_id INT, 
-        destination_port_id INT, 
+        origin_port_id VARCHAR(20), 
+        destination_port_id VARCHAR(20), 
         container_type_id INT, 
         weight NUMERIC,
         calculated_rate NUMERIC, 
@@ -361,7 +365,7 @@ async function loadCalculationConfigFromDB(originPortId, destinationPortId, cont
                 br.container_type_id = $3;
         `;
         // console.log("[v4.46 loadCalculationConfigFromDB] Executing query:", query, [originPortId, destinationPortId, containerTypeId]);
-        const { rows } = await client.query(query, [parseInt(originPortId), parseInt(destinationPortId), parseInt(containerTypeId)]);
+        const { rows } = await client.query(query, [parseInt(originPortId), parseInt(destinationPortId), containerTypeId]);
         // console.log("[v4.46 loadCalculationConfigFromDB] Query result rows:", rows);
         if (rows.length > 0) {
             console.log("[v4.46 loadCalculationConfigFromDB] Successfully loaded config from DB.");
@@ -441,8 +445,8 @@ app.post('/api/calculate', asyncHandler(async (req, res) => {
 
         const historyEntry = {
             origin_port_id: parseInt(originPort),
-            destination_port_id: parseInt(destinationPort),
-            container_type_id: parseInt(containerType),
+            destination_port_id: destinationPort,
+            container_type_id: containerType,
             weight: weight ? parseFloat(weight) : null,
             calculated_rate: calculatedRate,
             user_email: email || null,
@@ -504,7 +508,7 @@ app.post('/api/admin/base-rates', asyncHandler(async (req, res) => {
             VALUES ($1, $2, $3, $4)
             RETURNING *;
         `;
-        const result = await client.query(query, [origin_region, destination_region, parseInt(container_type_id), parseFloat(rate)]);
+        const result = await client.query(query, [origin_region, destination_region, container_type_id, parseFloat(rate)]);
         console.log("[v4.46 /api/admin/base-rates POST] Base rate added successfully:", result.rows[0]);
         res.status(201).json(result.rows[0]);
     } catch (err) {
@@ -532,7 +536,7 @@ app.put('/api/admin/base-rates/:id', asyncHandler(async (req, res) => {
             WHERE id = $5
             RETURNING *;
         `;
-        const result = await client.query(query, [origin_region, destination_region, parseInt(container_type_id), parseFloat(rate), parseInt(id)]);
+        const result = await client.query(query, [origin_region, destination_region, container_type_id, parseFloat(rate), parseInt(id)]);
         if (result.rows.length === 0) {
             return res.status(404).json({ error: 'Base rate not found' });
         }
