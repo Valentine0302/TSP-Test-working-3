@@ -126,9 +126,7 @@ async function autoMigrateDatabase() {
         }
 
         console.log("[v4.46 Robust Migration] Проверка и переименование столбцов для всех таблиц завершены.");
-        await client.query('COMMIT');
-        console.log('[v4.46 Robust Migration] Автоматическая миграция базы данных успешно завершена (или не требовалась).
-');
+        await client.query('COMMIT');        console.log("[v4.46 Robust Migration] Автоматическая миграция базы данных успешно завершена (или не требовалась).");
     } catch (error) {
         console.error('[v4.46 Robust Migration] Ошибка во время автоматической миграции базы данных, попытка отката...');
         if (client) {
