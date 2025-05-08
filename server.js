@@ -33,6 +33,10 @@ const pool = new Pool({
     rejectUnauthorized: false,
   }
 });
+// Создание экземпляра Express
+const app = express();
+const PORT = process.env.PORT || 3000;
+
 app.get('/api/ports', async (req, res) => {
   const result = await pool.query('SELECT * FROM ports');
   res.json(result.rows);
@@ -50,8 +54,6 @@ app.post('/api/upload/indices', async (req, res) => {
 app.post('/api/upload/base-rates', async (req, res) => {
   res.json({ success: true });
 });
-// Создание экземпляра Express
-const app = express();
 const PORT = process.env.PORT || 3000;
 
 // Middleware
