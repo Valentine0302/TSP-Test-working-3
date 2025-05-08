@@ -385,7 +385,7 @@ async function loadCalculationConfigFromDB(originPortId, destinationPortId, cont
 // --- API Маршруты ---
 
 // Получить все порты
-app.get('/api/ports', asyncHandler(async (req, res) => {
+app.get('/api/admin/ports', asyncHandler(async (req, res) => {
     console.log("[v4.46 /api/ports GET] Request received.");
     let client;
     try {
@@ -406,7 +406,7 @@ app.get('/api/ports', asyncHandler(async (req, res) => {
 }));
 
 // Получить все типы контейнеров
-app.get('/api/container-types', asyncHandler(async (req, res) => {
+app.get('/api/admin/container-types', asyncHandler(async (req, res) => {
     console.log("[v4.46 /api/container-types GET] Request received.");
     let client;
     try {
@@ -573,7 +573,7 @@ app.delete('/api/admin/base-rates/:id', asyncHandler(async (req, res) => {
 }));
 
 // Get calculation history
-app.get('/api/admin/history', asyncHandler(async (req, res) => {
+app.get('/api/admin/calculation-history', asyncHandler(async (req, res) => {
     console.log("[v4.46 /api/admin/history GET] Request received.");
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
@@ -618,7 +618,7 @@ app.get('/api/admin/history', asyncHandler(async (req, res) => {
 })); 
 
 // Get index configurations
-app.get('/api/admin/indices', asyncHandler(async (req, res) => {
+app.get('/api/admin/index-config', asyncHandler(async (req, res) => {
     console.log("[v4.46 /api/admin/indices GET] Request received.");
     let client;
     try {
@@ -673,7 +673,7 @@ app.post('/api/admin/indices', asyncHandler(async (req, res) => {
 }));
 
 // Get model settings
-app.get('/api/admin/settings', asyncHandler(async (req, res) => {
+app.get('/api/admin/model-settings', asyncHandler(async (req, res) => {
     console.log("[v4.46 /api/admin/settings GET] Request received.");
     let client;
     try {
