@@ -53,38 +53,38 @@ const asyncHandler = fn => (req, res, next) => Promise.resolve(fn(req, res, next
 // --- Инициализация системы --- 
 async function initializeSystem() {
   try {
-     console.log("Initializing freight calculator system v4.34 (Filepath Fix).");
+     console.log("Initializing freight calculator system v4.44 (Complete Fix).");
     await initializeDatabaseTables();
     await loadInitialDataFromJson('./extracted_data.json'); 
-    console.log('System initialization completed for v4.34_filepath_fix');
+    console.log("System initialization completed for v4.44 (Complete Fix).");
   } catch (error) {
-    console.error('Error initializing system (v4.34_filepath_fix):', error);
+    console.error("Error initializing system v4.44 (Complete Fix):", error);
     throw error; 
   }
 }
 
 // --- Загрузка начальных данных из JSON ---
 async function loadInitialDataFromJson(jsonFilePathParam) {
-    console.log(`[v4.34_filepath_fix] Attempting to load initial data from ${jsonFilePathParam}...`);
+    console.log(`[v4.44] Attempting to load initial data from ${jsonFilePathParam}...`);
     let client;
     let initialData;
     try {
         const jsonFilePath = path.isAbsolute(jsonFilePathParam) ? jsonFilePathParam : path.join(__dirname, jsonFilePathParam);
         const jsonData = fs.readFileSync(jsonFilePath, 'utf8');
         initialData = JSON.parse(jsonData);
-        console.log(`[v4.34_filepath_fix] Successfully loaded and parsed ${jsonFilePath}`);
+        console.log(`[v4.44] Successfully loaded and parsed ${jsonFilePath}`);
     } catch (err) {
-        console.error(`[v4.34_filepath_fix] Fatal Error: Could not read or parse ${jsonFilePathParam}. Ensure '${path.basename(jsonFilePathParam)}' is in the root directory. Error:`, err);
+        console.error(`[v4.44] Fatal Error: Could not read or parse ${jsonFilePathParam}. Ensure '${path.basename(jsonFilePathParam)}' is in the root directory. Error:`, err);
         throw new Error("Failed to load initial data from JSON file.");
     }
     if (!initialData || !initialData.ports || !initialData.container_types || !initialData.indices) {
-        console.error("[v4.34_filepath_fix] Fatal Error: JSON data is missing required keys (ports, container_types, indices).");
+        console.error("[v4.44] Fatal Error: JSON data is missing required keys (ports, container_types, indices).");
         throw new Error("Invalid initial data structure in JSON file.");
     }
     try {
         client = await pool.connect();
-        console.log("[v4.34_filepath_fix] Connected to DB for initial data load.");
-        console.log("[v4.34_filepath_fix] Loading ports from JSON...");
+        console.log("[v4.44] Connected to DB for initial data load.");
+        console.log("[v4.44] Loading ports from JSON...");
         let portCount = 0;
         for (const port of initialData.ports) {
             try {
@@ -101,11 +101,11 @@ async function loadInitialDataFromJson(jsonFilePathParam) {
                 );
                 portCount++;
             } catch (err) {
-                console.warn(`[v4.34_filepath_fix] Error inserting/updating port row: ${JSON.stringify(port)}, Error: ${err.message}`);
+                console.warn(`[v4.44] Error inserting/updating port row: ${JSON.stringify(port)}, Error: ${err.message}`);
             }
         }
-        console.log(`[v4.34_filepath_fix] Finished loading/updating ports. ${portCount} rows processed.`);
-        console.log("[v4.34_filepath_fix] Loading container types from JSON...");
+        console.log(`[v4.44] Finished loading/updating ports. ${portCount} rows processed.`);
+        console.log("[v4.44] Loading container types from JSON...");
         let ctCount = 0;
         for (const ct of initialData.container_types) {
             try {
@@ -117,11 +117,11 @@ async function loadInitialDataFromJson(jsonFilePathParam) {
                 );
                 ctCount++;
             } catch (err) {
-                console.warn(`[v4.34_filepath_fix] Error inserting/updating container type row: ${JSON.stringify(ct)}, Error: ${err.message}`);
+                console.warn(`[v4.44] Error inserting/updating container type row: ${JSON.stringify(ct)}, Error: ${err.message}`);
             }
         }
-        console.log(`[v4.34_filepath_fix] Finished loading/updating container types. ${ctCount} rows processed.`);
-        console.log("[v4.34_filepath_fix] Loading index config from JSON...");
+        console.log(`[v4.44] Finished loading/updating container types. ${ctCount} rows processed.`);
+        console.log("[v4.44] Loading index config from JSON...");
         let icCount = 0;
         for (const index of initialData.indices) {
             try {
@@ -141,24 +141,24 @@ async function loadInitialDataFromJson(jsonFilePathParam) {
                     );
                     icCount++;
                 } else {
-                     console.warn(`[v4.34_filepath_fix] Skipping invalid index config row: ${JSON.stringify(index)}`);
+                     console.warn(`[v4.44] Skipping invalid index config row: ${JSON.stringify(index)}`);
                 }
             } catch (err) {
-                console.warn(`[v4.34_filepath_fix] Error inserting/updating index config row: ${JSON.stringify(index)}, Error: ${err.message}`);
+                console.warn(`[v4.44] Error inserting/updating index config row: ${JSON.stringify(index)}, Error: ${err.message}`);
             }
         }
-        console.log(`[v4.34_filepath_fix] Finished loading/updating index config. ${icCount} rows processed.`);
-        console.log("[v4.34_filepath_fix] Initial base rates are managed via admin panel. Skipping loading from JSON.");
-        console.log("[v4.34_filepath_fix] Initial data loading process completed.");
+        console.log(`[v4.44] Finished loading/updating index config. ${icCount} rows processed.`);
+        console.log("[v4.44] Initial base rates are managed via admin panel. Skipping loading from JSON.");
+        console.log("[v4.44] Initial data loading process completed.");
     } catch (error) {
-        console.error("[v4.34_filepath_fix] Error loading initial data into database:", error);
+        console.error("[v4.44] Error loading initial data into database:", error);
     } finally {
-        if (client) { client.release(); console.log("[v4.34_filepath_fix] Database client released after initial data load."); }
+        if (client) { client.release(); console.log("[v4.44] Database client released after initial data load."); }
     }
 }
 
 async function initializeDatabaseTables() {
-  console.log("[v4.34_filepath_fix] Initializing database tables...");
+  console.log("[v4.44] Initializing database tables...");
   let client;
   try {
     client = await pool.connect();
@@ -174,7 +174,7 @@ async function initializeDatabaseTables() {
         country VARCHAR(100)
       );
     `);
-    console.log("[v4.34_filepath_fix] 'ports' table ensured.");
+    console.log("[v4.44] 'ports' table ensured.");
     await client.query(`
       CREATE TABLE IF NOT EXISTS container_types (
         id SERIAL PRIMARY KEY,
@@ -182,7 +182,7 @@ async function initializeDatabaseTables() {
         description TEXT
       );
     `);
-    console.log("[v4.34_filepath_fix] 'container_types' table ensured.");
+    console.log("[v4.44] 'container_types' table ensured.");
     await client.query(`
       CREATE TABLE IF NOT EXISTS base_rates (
         id SERIAL PRIMARY KEY, 
@@ -194,7 +194,7 @@ async function initializeDatabaseTables() {
         FOREIGN KEY (container_type_id) REFERENCES container_types(id)
       );
     `);
-    console.log("[v4.34_filepath_fix] 'base_rates' table ensured.");
+    console.log("[v4.44] 'base_rates' table ensured.");
     await client.query(`
       CREATE TABLE IF NOT EXISTS index_config (
         index_name VARCHAR(50) PRIMARY KEY,
@@ -204,7 +204,7 @@ async function initializeDatabaseTables() {
         last_updated TIMESTAMP
       );
     `);
-    console.log("[v4.34_filepath_fix] 'index_config' table ensured.");
+    console.log("[v4.44] 'index_config' table ensured.");
     await client.query(`
       CREATE TABLE IF NOT EXISTS model_settings (
         setting_key VARCHAR(50) PRIMARY KEY,
@@ -215,7 +215,7 @@ async function initializeDatabaseTables() {
     await client.query(`INSERT INTO model_settings (setting_key, setting_value, description) VALUES 
       ('sensitivityCoeff', '0.5', 'Coefficient of sensitivity to index changes (0-1)')
       ON CONFLICT (setting_key) DO NOTHING;`);
-    console.log("[v4.34_filepath_fix] 'model_settings' table ensured.");
+    console.log("[v4.44] 'model_settings' table ensured.");
     await client.query(`
       CREATE TABLE IF NOT EXISTS calculation_history (
         id SERIAL PRIMARY KEY,
@@ -232,20 +232,20 @@ async function initializeDatabaseTables() {
         FOREIGN KEY (container_type_id) REFERENCES container_types(id) ON DELETE SET NULL
       );
     `);
-    console.log("[v4.34_filepath_fix] 'calculation_history' table ensured.");
+    console.log("[v4.44] 'calculation_history' table ensured.");
     await initializeSeasonalityTables(client); 
-    console.log("[v4.34_filepath_fix] Seasonality tables initialized via external module.");
+    console.log("[v4.44] Seasonality tables initialized via external module.");
     await client.query("COMMIT");
-    console.log("[v4.34_filepath_fix] Database tables initialized/verified successfully.");
+    console.log("[v4.44] Database tables initialized/verified successfully.");
   } catch (error) {
-    console.error("[v4.34_filepath_fix] Error during database transaction, attempting rollback...");
+    console.error("[v4.44] Error during database transaction, attempting rollback...");
     if (client) { 
-      try { await client.query("ROLLBACK"); console.log("[v4.34_filepath_fix] Transaction rolled back."); } catch (rollbackError) { console.error("[v4.34_filepath_fix] Rollback failed:", rollbackError); }
+      try { await client.query("ROLLBACK"); console.log("[v4.44] Transaction rolled back."); } catch (rollbackError) { console.error("[v4.44] Rollback failed:", rollbackError); }
     }
-    console.error("[v4.34_filepath_fix] Error initializing database tables:", error);
+    console.error("[v4.44] Error initializing database tables:", error);
     throw error;
   } finally {
-    if (client) { client.release(); console.log("[v4.34_filepath_fix] Database client released after table initialization."); }
+    if (client) { client.release(); console.log("[v4.44] Database client released after table initialization."); }
   }
 }
 
@@ -255,7 +255,7 @@ function validateEmail(email) {
 }
 
 async function loadCalculationConfigFromDB() {
-    console.log("[v4.34_filepath_fix loadCalculationConfigFromDB] Attempting to load calculation config from DB.");
+    console.log("[v4.44 loadCalculationConfigFromDB] Attempting to load calculation config from DB.");
     let client;
     try {
         client = await pool.connect();
@@ -285,7 +285,7 @@ async function loadCalculationConfigFromDB() {
         
         return { baseRatesConfig, indicesConfig, modelSettings, containerTypes };
     } catch (error) {
-        console.error('[v4.34_filepath_fix loadCalculationConfigFromDB] Error loading calculation config from DB:', error);
+        console.error("[v4.44 loadCalculationConfigFromDB] Error loading calculation config from DB:", error);
         throw error;
     } finally {
         if (client) client.release();
@@ -294,42 +294,42 @@ async function loadCalculationConfigFromDB() {
 
 // --- API Маршруты для Публичного Калькулятора ---
 app.get("/api/ports", asyncHandler(async (req, res) => {
-    console.log("[v4.34_filepath_fix /api/ports GET] Request received."); // Changed from /api/public/ports
+    console.log("[v4.44 /api/ports GET] Request received."); // Changed from /api/public/ports
     const client = await pool.connect();
     try {
-        const result = await client.query("SELECT id, name, code, region, country FROM ports ORDER BY name ASC");
-        console.log(`[v4.34_filepath_fix /api/ports GET] Found ${result.rows.length} ports.`);
-        res.json(result.rows.map(p => ({...p, id: parseInt(p.id, 10) }))); // Ensure ID is integer
+        const result = await client.query("SELECT id, name, code FROM ports ORDER BY name ASC");
+        console.log(`[v4.44 /api/ports GET] Found ${result.rows.length} ports.`);
+        res.json(result.rows.map(p => ({ id: parseInt(p.id, 10), name: p.name, code: p.code, displayText: `${p.name} (${p.code})` }))); // Ensure ID is integer
     } finally {
         client.release();
-        console.log("[v4.34_filepath_fix /api/ports GET] Client released.");
+        console.log("[v4.44 /api/ports GET] Client released.");
     }
 }));
 
 app.get("/api/container-types", asyncHandler(async (req, res) => {
-    console.log("[v4.34_filepath_fix /api/container-types GET] Request received."); // Changed from /api/public/container-types
+    console.log("[v4.44 /api/container-types GET] Request received."); // Changed from /api/public/container-types
     const client = await pool.connect();
     try {
         const result = await client.query("SELECT id, name, description FROM container_types ORDER BY name ASC");
-        console.log(`[v4.34_filepath_fix /api/container-types GET] Found ${result.rows.length} container types.`);
+        console.log(`[v4.44 /api/container-types GET] Found ${result.rows.length} container types.`);
         res.json(result.rows.map(ct => ({ ...ct, id: parseInt(ct.id, 10) }))); // Ensure ID is integer
     } finally {
         client.release();
-        console.log("[v4.34_filepath_fix /api/container-types GET] Client released.");
+        console.log("[v4.44 /api/container-types GET] Client released.");
     }
 }));
 
 app.post("/api/calculate", asyncHandler(async (req, res) => {
-    console.log("[v4.34_filepath_fix /api/calculate POST] Request received with body:", req.body);
+    console.log("[v4.44 /api/calculate POST] Request received with body:", req.body);
     const { originPort, destinationPort, containerType, weight, email } = req.body;
 
     // Enhanced logging for incoming port and containerType IDs
-    console.log(`[v4.34_filepath_fix /api/calculate POST] Received originPort: ${originPort} (type: ${typeof originPort})`);
-    console.log(`[v4.34_filepath_fix /api/calculate POST] Received destinationPort: ${destinationPort} (type: ${typeof destinationPort})`);
-    console.log(`[v4.34_filepath_fix /api/calculate POST] Received containerType: ${containerType} (type: ${typeof containerType})`);
+    console.log(`[v4.44 /api/calculate POST] Received originPort: ${originPort} (type: ${typeof originPort})`);
+    console.log(`[v4.44 /api/calculate POST] Received destinationPort: ${destinationPort} (type: ${typeof destinationPort})`);
+    console.log(`[v4.44 /api/calculate POST] Received containerType: ${containerType} (type: ${typeof containerType})`);
 
     if (!originPort || !destinationPort || !containerType) {
-        console.log("[v4.34_filepath_fix /api/calculate POST] Missing required fields.");
+        console.log("[v4.44 /api/calculate POST] Missing required fields.");
         return res.status(400).json({ error: "Origin port, destination port, and container type are required." });
     }
 
@@ -388,12 +388,11 @@ app.post("/api/calculate", asyncHandler(async (req, res) => {
             res.status(500).json({ error: "An error occurred during freight calculation (undefined result)." });
         }
     } catch (error) {
-        console.error("[v4.34_filepath_fix /api/calculate POST] Error during calculation:", error.message, error.stack);
+        console.error("[v4.44 /api/calculate POST] Error during calculation:", error.message, error.stack);
         res.status(500).json({ error: "An error occurred during freight calculation.", details: error.message });
     } finally {
         if (client) {
-             client.release();
-             console.log("[v4.34_filepath_fix /api/calculate POST] Client released after calculation.");
+             client.release(); console.log("[v4.44 /api/calculate POST] Client released after calculation attempt.");n.");
         }
     }
 }));
