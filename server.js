@@ -361,7 +361,7 @@ async function loadCalculationConfigFromDB(originPortId, destinationPortId, cont
                 br.container_type_id = $3;
         `;
         // console.log("[v4.46 loadCalculationConfigFromDB] Executing query:", query, [originPortId, destinationPortId, containerTypeId]);
-        const { rows } = await client.query(query, [originPortId, destinationPortId, containerTypeId]);
+        const { rows } = await client.query(query, [parseInt(originPortId), parseInt(destinationPortId), parseInt(containerTypeId)]);
         // console.log("[v4.46 loadCalculationConfigFromDB] Query result rows:", rows);
         if (rows.length > 0) {
             console.log("[v4.46 loadCalculationConfigFromDB] Successfully loaded config from DB.");
